@@ -14,33 +14,30 @@ import time
 from scipy.stats import linregress
 from scipy import integrate
 
+from progress.bar import Bar
+
 alpha = 32.9 #nm
 beta = 2610 #nm
-gamma =2*4.1 #nm
+gamma = 2*4.1 #nm
 eta_1 = 1.66
 eta_2 = 1.27
 
 
-#radius = 15
-#radius = [35,40,45,50,55,60]
-radius = [20]
-
 def rot(alpha):
     return np.matrix( [[np.cos(alpha),-np.sin(alpha)],[np.sin(alpha),np.cos(alpha)]] )
 
-def get_circle(r,n=12,inner_circle=False,centre_dot=False):
+def get_circle(r,n=12,inner_circle=False,centre_dot=False,dose_check_radius = 3):
+    v = np.array( [r-dose_check_radius,0] )
+
     x = np.zeros(0)
     y = np.zeros(0)
-
-    v = np.array( [r,0] )
-
     for i in range(n):
         x2, y2 = (v*rot(2*np.pi/n*i)).A1
         x = np.hstack( (x,x2) )
         y = np.hstack( (y,y2) )
 
     if inner_circle:
-        v = np.array( [r/2,0] )
+        v = np.array( [(r-dose_check_radius)/2,0] )
         n = int(n/2)
         for i in range(n):
             x2, y2 = (v*rot(2*np.pi/n*i+2*np.pi/(2*n))).A1
@@ -51,134 +48,222 @@ def get_circle(r,n=12,inner_circle=False,centre_dot=False):
         x = np.hstack( (x,0) )
         y = np.hstack( (y,0) )
 
-    #xv, yv = np.meshgrid(x, y)
-    #xv = np.ravel(xv)
-    #yv = np.ravel(yv)
-    return x,y
 
-def get_trimer(dist,r,n):
+    v = np.array( [r,0] )
+    cx = np.zeros(0)
+    cy = np.zeros(0)
+    for i in range(n):
+        x2, y2 = (v*rot(2*np.pi/n*i)).A1
+        cx = np.hstack( (cx,x2) )
+        cy = np.hstack( (cy,y2) )
+
+    return x,y, cx, cy
+
+def get_trimer(dist,r,n, inner_circle=False, centre_dot = False,dose_check_radius = 3):
     x = np.zeros(0)
     y = np.zeros(0)
+    cx = np.zeros(0)
+    cy = np.zeros(0)
     v = np.array( [0,0.5*(dist+2*r)/np.sin(np.pi/3)] )
     m = 3
     for i in range(m):
         x2, y2 = (v*rot(2*np.pi/m*i)).A1
-        x1,y1 = get_circle(r,n)
+        x1,y1,cx1,cy1 = get_circle(r,n,inner_circle, centre_dot, dose_check_radius)
 
         x = np.hstack( (x,x1+x2) )
         y = np.hstack( (y,y1+y2) )
+        cx = np.hstack( (cx,cx1+x2) )
+        cy = np.hstack( (cy,cy1+y2) )
 
     x += 500
     y += 500
+    cx += 500
+    cy += 500
 
-    return x,y
+    return x,y,cx,cy
 
-def get_dimer(dist,r,n):
-    x1,y1 = get_circle(r,n)
-    x2,y2 = get_circle(r,n)
+def get_dimer(dist,r,n, inner_circle=False, centre_dot = False,dose_check_radius = 3):
+    x1,y1,cx1,cy1 = get_circle(r,n,inner_circle, centre_dot,dose_check_radius)
+    x2,y2,cx2,cy2 = get_circle(r,n,inner_circle, centre_dot,dose_check_radius)
     x1 -= (r+dist/2)
     x2 += (r+dist/2)
+    cx1 -= (r+dist/2)
+    cx2 += (r+dist/2)
 
     x = np.concatenate((x1,x2))+500
     y = np.concatenate((y1,y2))+500
-
-    # x1,y1 = get_circle(r,n=n)
-    # x2,y2 = get_circle(r,n=n)
-    # x1 -= (r+dist/2)
-    # x2 += (r+dist/2)
-    #
-    # cx = np.concatenate((x1,x2))+500
+    cx = np.concatenate((cx1,cx2))+500
+    cy = np.concatenate((cy1,cy2))+500
     # cy = np.concatenate((y1,y2))+500
 
-    return x,y#, cx, cy
+    return x,y, cx, cy
 
-def get_hexamer(dist,r,n):
+def get_hexamer(dist,r,n, inner_circle=False, centre_dot = False,dose_check_radius = 3):
     x = np.zeros(0)
     y = np.zeros(0)
+    cx = np.zeros(0)
+    cy = np.zeros(0)
     v = np.array( [0.5*(dist+2*r)/np.sin(np.pi/6),0] )
     m = 6
     for i in range(m):
         x2, y2 = (v*rot(2*np.pi/m*i)).A1
-        x1,y1 = get_circle(r,n)
+        x1,y1,cx1,cy1 = get_circle(r,n,inner_circle, centre_dot)
 
         x = np.hstack( (x,x1+x2) )
         y = np.hstack( (y,y1+y2) )
+        cx = np.hstack( (cx,cx1+x2) )
+        cy = np.hstack( (cy,cy1+y2) )
 
     x += 500
     y += 500
+    cx += 500
+    cy += 500
 
-    return x,y
+    return x,y,cx,cy
 
 
-def get_asymdimer(dist,r,n):
-    x1,y1 = get_circle(r,n)
+def get_asymdimer(dist,r,n, inner_circle=False, centre_dot = False,dose_check_radius = 3):
+    x1,y1,cx1,cy1 = get_circle(r,n,inner_circle, centre_dot,dose_check_radius)
     r2 = 1.5*r
-    x2,y2 = get_circle(r2,n)
+    x2,y2,cx2,cy2 = get_circle(r2,n,inner_circle, centre_dot,dose_check_radius)
     x1 -= r+dist/2
     x2 += r2+dist/2
+    cx1 -= r+dist/2
+    cx2 += r2+dist/2
 
     x = np.concatenate((x1,x2))+500
     y = np.concatenate((y1,y2))+500
+    cx = np.concatenate((cx1,cx2))+500
+    cy = np.concatenate((cy1,cy2))+500
+    return x,y,cx,cy
 
-    return x,y
 
-def get_single(dist,r,n):
-    x1, y1 = get_circle(r, n=n, inner_circle=False, centre_dot=True)
+def get_asymtrimer(dist,r,n, inner_circle=False, centre_dot = False,dose_check_radius = 3):
+    x1,y1,cx1,cy1 = get_circle(r,n,inner_circle, centre_dot,dose_check_radius)
+    r2 = 1.5*r
+    x2,y2,cx2,cy2 = get_circle(r2,n,inner_circle, centre_dot,dose_check_radius)
+    x1 += r+r2+dist
+    cx1 += r+r2+dist
+    #x2 += r2+dist/2
+
+    r3 = 1.5*r2
+    x3,y3,cx3,cy3 = get_circle(r3,n,inner_circle, centre_dot,dose_check_radius)
+    x3 -= r2+r3+dist
+    cx3 -= r2+r3+dist
+
+    x = np.concatenate((x1,x2,x3))+500
+    y = np.concatenate((y1,y2,y3))+500
+    cx = np.concatenate((cx1,cx2,cx3))+500
+    cy = np.concatenate((cy1,cy2,cy3))+500
+
+    return x,y,cx,cy
+
+
+def get_single(dist,r,n, inner_circle=False, centre_dot = False,dose_check_radius = 3):
+    x1, y1, cx1, cy1 = get_circle(r, n, inner_circle, centre_dot,dose_check_radius)
 
     #if r >= 50:
     #    x1,y1 = get_circle(r,n=48,inner_circle=True,centre_dot=True)
     #else:
     #    x1, y1 = get_circle(r, n=32, inner_circle=False, centre_dot=True)
 
-    x = x1+3750
-    y = y1+3750
+    x = x1+500
+    y = y1+500
+    cx = cx1+500
+    cy = cy1+500
 
-    return x,y
+    return x,y,cx,cy
 
 
-def get_triple(dist,r,n):
-    x1,y1 = get_circle(r,n)
-    x2,y2 = get_circle(r,n)
-    x3,y3 = get_circle(r,n)
+def get_triple(dist,r,n, inner_circle=False, centre_dot = False,dose_check_radius = 3):
+    x1,y1,cx1,cy1 = get_circle(r,n,inner_circle, centre_dot,dose_check_radius)
+    x2,y2,cx2,cy2 = get_circle(r,n,inner_circle, centre_dot,dose_check_radius)
+    x3,y3,cx3,cy3 = get_circle(r,n,inner_circle, centre_dot,dose_check_radius)
     x1 -= 2*r+dist
     x2 += 2*r+dist
+    cx1 -= 2*r+dist
+    cx2 += 2*r+dist
 
     x = np.concatenate((x1,x2,x3))+500
     y = np.concatenate((y1,y2,y3))+500
+    cx = np.concatenate((cx1, cx2, cx3)) + 500
+    cy = np.concatenate((cy1, cy2, cy3)) + 500
 
-    return x,y
+    return x,y,cx,cy
 
-def get_line(dist,r):
-    n = int(r/dist)
-    x = np.zeros(n)
-    y = np.zeros(n)
-    for i in range(n):
-        x[i] += i*dist
-
-    return x,y
-
+# def get_line(dist,r):
+#     n = int(r/dist)
+#     x = np.zeros(n)
+#     y = np.zeros(n)
+#     for i in range(n):
+#         x[i] += i*dist
+#
+#     return x,y
+#
+# def get_hexgrid(dist,r,n):
+#     x = np.zeros(0)
+#     y = np.zeros(0)
+#     x1 = np.zeros(0)
+#     y1 = np.zeros(0)
+#     x0, y0 = get_circle(r,9)
+#     #v1 = np.array( [dist+2*r,0] )
+#     #v2 = (v1*rot(2*np.pi/6)).A1
+#     #v1 = (v1*rot(-2*np.pi/6)).A1
+#     d = (dist+2*r)
+#     a = np.sqrt(3)*d
+#     v1 = a*np.array([np.sqrt(3)/2,1/2])
+#     v2 = a*np.array([np.sqrt(3)/2,-1/2])
+#
+#     indices = np.arange(-50,50,1)
+#
+#     for i in indices:
+#         for j in indices:
+#             if np.sqrt(i**2+j**2) < 5:
+#                 x = np.hstack( (x,x0+v1[0]*i+v2[0]*j) )
+#                 y = np.hstack( (y,y0+v1[1]*i+v2[1]*j) )
+#
+#                 x1 = np.hstack( (x1,x0-v1[0]*i+v2[0]*j-d) )
+#                 y1 = np.hstack( (y1,y0-v1[1]*i+v2[1]*j) )
+#
+#
+#     x = np.hstack((x, x1))
+#     y = np.hstack((y, y1))
+#
+#     x = x - np.min(x) + 500
+#     y = y - np.min(y) + 500
+#     return x,y
 
 current = 100 * 1e-12 # A
-dwell_time = 200 * 1e-9 # s
+dwell_time = 400 * 1e-9#200 * 1e-9 # s
 dose_check_radius = 3 # nm
-target_dose = 70 # uC/cm^2
+target_dose = 500#70 # uC/cm^2
 n = 12
+
+inner = None
+centre = None
 
 #outfilename = 'emre2.txt'
 #outfilename = 'asymdimer.txt'
 #outfilename = 'single.txt'
-#outfilename = 'pillars_r'+str(radius[0])+'nm_dose'+str(target_dose)+'_test2.txt'
-outfilename = 'test.txt'
-#outfilename = 'anni_kreise.txt'
+#outfilename = 'pillars_r'+str(radius[0])+'nm_dose'+str(target_dose)+'.txt'
+#outfilename = 'test.txt'
+#outfilename = 'hexgrid.txt'
+#outfilename = 'anni_struct.txt'
 
 
-prefixes = ["pillar_dimer","pillar_trimer","pillar_hexamer","pillar_asymdimer","pillar_triple"]
-structures = [get_dimer,get_trimer,get_hexamer,get_asymdimer,get_triple]
-dists = [40]
-#for i in range(50):
-#    dists.append(dists[i]+1)
+# prefixes = ["pillar_dimer","pillar_trimer","pillar_hexamer","pillar_asymdimer","pillar_triple"]
+# structures = [get_dimer,get_trimer,get_hexamer,get_asymdimer,get_triple]
+# dists = [30]
+# for i in range(30):
+#     dists.append(dists[i]+2)
 #for i in range(10):
 #    dists.append(dists[i] + 5)
+
+#prefixes = ["pillar_dimer","pillar_trimer","pillar_triple"]
+#structures = [get_dimer,get_trimer,get_triple]
+#dists = [10]
+#for i in range(30):
+#    dists.append(dists[i]+2)
 
 # prefixes = ["pillar_dimer"]#,"pillar_trimer","pillar_hexamer"]#,"pillar_asymdimer","pillar_triple"]
 # structures = [get_dimer]#,get_trimer,get_hexamer]#,get_asymdimer,get_triple]
@@ -187,6 +272,31 @@ dists = [40]
 #prefixes = ["kreis"]
 #structures = [get_single]#,get_trimer,get_hexamer,get_asymdimer,get_triple]
 #dists = [1]
+
+#prefixes = ["hexgrid"]
+#structures = [get_hexgrid]
+#dists = [40,45,50,55,50,65,70,75,80]
+prefixes = ["pillar_single","pillar_dimer","pillar_trimer","pillar_hexamer","pillar_asymdimer","pillar_triple"]
+structures = [get_single,get_dimer,get_trimer,get_hexamer,get_asymdimer,get_triple]
+
+dists = [10]
+for i in range(30):
+    dists.append(dists[i]+2)
+radius = [20]
+n =      [12]
+centre = [ 0]
+inner =  [ 0]
+
+
+#dists = [0]
+#radius = [15,20,25,30,35,40,45,50,60,70,80,90,100,120,140,160,180,200]
+#n =      [12,12,12,12,12,14,14,16,16,18,18,20, 22, 24, 26, 28, 30, 32]
+#centre = [ 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+#inner =  [ 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+
+
+outfilename = 'pillars_r'+str(radius[0])+'nm_dose'+str(target_dose)+'.txt'
+
 
 
 normalization = 1
@@ -212,7 +322,8 @@ def calc_map_2(x0,y0,doses,x,y):
     pixel_area = np.abs(x[0] - x[1]) * np.abs(x[0] - x[1])  # nm^2
     for i in range(len(x)):
         for j in range(len(x0)):
-            exposure[i] += calc_prox(dist(x0[j],y0[j],x[i],y[i]))*doses[j]* pixel_area
+            r= dist(x0[j],y0[j],x[i],y[i])
+            exposure[i] += calc_prox(r)*doses[j]* pixel_area
     return exposure
 
 @jit(float64[:](float64[:,:],float64[:]),nopython=True)
@@ -262,15 +373,20 @@ def calc_fitness(population,proximity):
         exposure = calc_map(proximity[:,:],population[:, p] * current * dwell_time)
             #exposure = calc_map(proximity[:, j, :], repetitions * current * dwell_time)
         exposure = (exposure* 1e6)/(pixel_area*1e-14 ) # uC/cm^2
-        fitness[p] = np.sum(np.abs(target_dose-exposure))/exposure.shape[0]
+        #sum = 0.0
+        #for i in range(exposure.shape[0]):
+        #    sum += math.fabs(target_dose-exposure[i])
+        #fitness[p] = sum/exposure.shape[0]
+        #fitness[p] = np.sum(np.abs(target_dose-exposure))/exposure.shape[0]
+        fitness[p] = np.mean(np.abs(np.subtract(target_dose,exposure)))
 
     return fitness
 
 @jit(float64[:,:](float64[:,:]),nopython=True)
 def recombine_population(population):
     #n_recombination = 6
-    #n_recombination = int(population.shape[1]/3)
-    n_recombination = int(population.shape[1]/2)
+    n_recombination = int(population.shape[1]/3)
+    #n_recombination = int(population.shape[1]/2)
 
     for i in range(int(n_recombination/2)):
         k = 2*i
@@ -303,78 +419,16 @@ def check_limits(population):
     return population
 
 
-
-@jit()
-def partition(values, idxs, left, right):
-    """
-    Partition method
-    """
-
-    piv = values[idxs[left]]
-    i = left + 1
-    j = right
-
-    while True:
-        while i <= j and values[idxs[i]] <= piv:
-            i += 1
-        while j >= i and values[idxs[j]] >= piv:
-            j -= 1
-        if j <= i:
-            break
-
-        idxs[i], idxs[j] = idxs[j], idxs[i]
-
-    idxs[left], idxs[j] = idxs[j], idxs[left]
-
-    return j
-
-
-@jit()
-def argsort1D(values):
-
-    idxs = np.arange(values.shape[0])
-
-    left = 0
-    right = values.shape[0] - 1
-
-    max_depth = np.int(right / 2)
-
-    ndx = 0
-
-    tmp = np.zeros((max_depth, 2), dtype=np.int64)
-
-    tmp[ndx, 0] = left
-    tmp[ndx, 1] = right
-
-    ndx = 1
-    while ndx > 0:
-
-        ndx -= 1
-        right = tmp[ndx, 1]
-        left = tmp[ndx, 0]
-
-        piv = partition(values, idxs, left, right)
-
-        if piv - 1 > left:
-            tmp[ndx, 0] = left
-            tmp[ndx, 1] = piv - 1
-            ndx += 1
-
-        if piv + 1 < right:
-            tmp[ndx, 0] = piv + 1
-            tmp[ndx, 1] = right
-            ndx += 1
-
-    return idxs
-
 population_size = 60
-max_iter = 200000
+#max_iter = 200000
+max_iter = 50000
 #max_iter = 50000
 
 @jit()#(float64(float64[:],float64[:],float64[:],float64[:],float64[:],float64[:]))
 def iterate(x0,y0,repetitions,target):
     mutation_rate = 0.3
-    logpoints = np.arange(500,max_iter,500)
+    #logpoints = np.arange(500,max_iter,500)
+    logpoints = np.array([max_iter+1])
     checkpoints = np.arange(50,max_iter,50)
 
     population = np.zeros((len(x0),population_size),dtype=np.float64)
@@ -407,13 +461,13 @@ def iterate(x0,y0,repetitions,target):
         sorted_ind = np.argsort(fitness)
         #sorted_ind = argsort1D(fitness)
 
-        if fitness[sorted_ind][0] < 0.001:
+        if 100*fitness[sorted_ind][0]/target_dose < 0.001:#0.01:
             break
 
-        if i < 1000:
-            sigma = 1
-        elif i < 2000:
-            sigma = 0.5
+        if i < 2000:
+            sigma = 2#1
+        elif i < 4000:
+            sigma = 1#0.5
         else:
             if i in checkpoints:
                 indices = np.arange(i-500,i,step=1)
@@ -436,10 +490,11 @@ def iterate(x0,y0,repetitions,target):
         population = mutate_population(population,sigma,mutation_rate)
         population = check_limits(population)
         if i in logpoints:
-            print("{0:7d}: fitness: {1:1.5f}, sigma: {2:1.5f}".format(i, fitness[sorted_ind][0], sigma))
+            print("{0:7d}: fitness: {1:1.5f}%, sigma: {2:1.5f}".format(i, 100*fitness[sorted_ind][0]/target_dose, sigma))
         convergence[i] = fitness[sorted_ind][0]
         t[i] = time.time() - starttime
 
+    print("Done -> Mean Error: {0:1.5f}%, sigma: {1:1.5f}".format(convergence[:i][-1] , sigma))
 
     return population[:,0], t[:i], convergence[:i]
 
@@ -448,67 +503,74 @@ def iterate(x0,y0,repetitions,target):
 
 Outputfile = open(outfilename,'w')
 
-for r in radius:
+n_total = len(radius) * len(structures) * len(dists)
+
+bar = Bar('Status', max=n_total)
+
+for r in range(len(radius)):
     for l in range(len(structures)):
         for k in range(len(dists)):
-            print("structure #: {0:d}/{1:d}, dist #: {2:d}/{3:d}".format(l+1, len(structures), k+1, len(dists)))
+            at = (r+1)*(l+1)*(k+1)
+            print("structure #: {0:d}/{1:d} {4:s} ,dist #: {2:d}/{3:d}, iter #: {6:d}/{5:d}".format(l + 1, len(structures), k + 1, len(dists), prefixes[l], n_total, at))
 
-            Outputfile.write('D ' + prefixes[l] +'-'+str(dists[k])+", 11500, 11500, 5, 5" + '\n')
-            Outputfile.write('I 1' + '\n')
-            Outputfile.write('C '+str(int(dwell_time*1e9)) + '\n')
-            Outputfile.write("FSIZE 20 micrometer" + '\n')
-            Outputfile.write("UNIT 1 micrometer" + '\n')
-
-            #Outputfile.write('D ' + prefixes[l] +'-'+str(dists[k])+", 11000, 11000, 5, 5" + '\n')
-            #Outputfile.write('D ' + prefixes[l] + '-' + str(r) + ", 11000, 11000, 5, 5" + '\n')
+            #Outputfile.write('D ' + prefixes[l] +'-'+str(dists[k])+", 11500, 11500, 5, 5" + '\n')
             #Outputfile.write('I 1' + '\n')
             #Outputfile.write('C '+str(int(dwell_time*1e9)) + '\n')
-            #Outputfile.write("FSIZE 15 micrometer" + '\n')
+            #Outputfile.write("FSIZE 20 micrometer" + '\n')
             #Outputfile.write("UNIT 1 micrometer" + '\n')
 
-            x0,y0 = structures[l](dists[k]+dose_check_radius*2,r-dose_check_radius,n)
+            Outputfile.write('D ' + prefixes[l] +'-'+str(dists[k])+", 11000, 11000, 5, 5" + '\n')
+            #Outputfile.write('D ' + prefixes[l] + '-' + str(r) + ", 11000, 11000, 5, 5" + '\n')
+            Outputfile.write('I 1' + '\n')
+            Outputfile.write('C '+str(int(dwell_time*1e9)) + '\n')
+            Outputfile.write("FSIZE 15 micrometer" + '\n')
+            Outputfile.write("UNIT 1 micrometer" + '\n')
 
-            repetitions = np.ones(len(x0),dtype=np.float64)*100
+            if isinstance(n, list) and isinstance(inner, list) and isinstance(centre, list):
+                x0, y0, cx, cy = structures[l](dists[k], radius[r], n[r],inner[r],centre[r],dose_check_radius)
+                # if radius[r] < 100:
+                #     x0, y0 = structures[l](dists[k] + dose_check_radius * 2, radius[r] - dose_check_radius, n[r],inner[r],centre[r])
+                #     cx, cy = structures[l](dists[k], radius[r], n[r])
+                # else:
+                #     x0, y0 = structures[l](dists[k],radius[r]*3/4, n[r], False, False)
+                #     x01, y01 = structures[l](dists[k], radius[r] * 1 / 4, int(n[r]/2), False, False)
+                #     x0 = np.concatenate((x0,x01))
+                #     y0 = np.concatenate((y0, y01))
+                #     cx, cy = structures[l](dists[k], radius[r], n[r])
+                #     cx2, cy2 = structures[l](dists[k], int(radius[r]*2/4), int(n[r]*2/3))
+                #     #cx3, cy3 = structures[l](dists[k], int(radius[r]*1/5), int(n[r]*1/3))
+                #     cx3, cy3 = (np.array([500]),np.array([500]))
+                #     #cx = np.concatenate((cx,cx2,cx3))
+                #     #cy = np.concatenate((cy, cy2,cy3))
+                #     cx = np.concatenate((cx,cx3))
+                #     cy = np.concatenate((cy,cy3))
+            else:
+                x0,y0 = structures[l](dists[k]+dose_check_radius*2,radius[r]-dose_check_radius,n)
+                cx, cy = structures[l](dists[k],radius[r],n)
 
-            cx, cy = structures[l](dists[k],r,n)
+            #plt.scatter(x0,y0)
+            #plt.show()
+            #plt.close()
+
+            repetitions = np.ones(len(x0),dtype=np.float64)*300
+
             target = np.zeros((len(cx),2),dtype=np.float64)
             target[:,0] = cx
             target[:,1] = cy
 
-            # x_c, y_c = get_circle(r*1.1, n=16,inner_circle=False,centre_dot=False)
-            # target = np.zeros((len(x0),len(x_c),2),dtype=np.float64)
-            # for i in range(len(x0)):
-            #    target[i,:,0] = x_c
-            #    target[i, :, 1] = y_c
-
-
-            # # for lines
-            # #x_c,y_c = get_line(0.5,1.5)
-            # x_c = np.array([0])
-            # y_c = np.array([0])
-            # target = np.zeros((len(x0),len(x_c)*2,2),dtype=np.float64)
-            # for i in range(len(x0)):
-            #     target[i,:,0] = np.append(x_c,x_c)+x0[i]
-            #     target[i, :, 1] = np.append(y_c-10,y_c+10) + y0[i]
-
-            # fig = plt.figure()
-            # plt.scatter(x0-500, y0-500, c="blue")
-            # plt.scatter(target[:,0].ravel()-500, target[:,1].ravel()-500, c="red")
-            # plt.tight_layout(.5)
-            # plt.show()
-            # plt.close()
-
-
             repetitions, t, convergence = iterate(x0, y0, repetitions,target)
 
+            repetitions[np.where(repetitions < 1)] = 0
             repetitions = np.array(np.round(repetitions),dtype=np.int)
 
             x0 = x0 -500
             y0 = y0 -500
             target = target - 500
 
-            x = np.arange(np.min(x0)-50,np.max(x0)+50,step=0.2)
-            y = np.arange(np.min(y0)-50,np.max(y0)+50,step=0.2)
+            #x = np.arange(np.min(x0)-50,np.max(x0)+50,step=0.2)
+            #y = np.arange(np.min(y0)-50,np.max(y0)+50,step=0.2)
+            x = np.arange(np.min(x0)-50,np.max(x0)+50,step=1)
+            y = np.arange(np.min(y0)-50,np.max(y0)+50,step=1)
             x, y = np.meshgrid(x, y)
             orig_shape = x.shape
             x = x.ravel()
@@ -520,24 +582,26 @@ for r in radius:
             pixel_area = pixel_area * 1e-14  # cm^2
             exposure = exposure/pixel_area # uC/cm^2
 
-            name = "pics/"+prefixes[l]+"_"+str(dists[k])+"_"+str(r)+".png"
-            name_pgf = "pics/" + prefixes[l] + "_" + str(dists[k]) + "_" + str(r) + ".pgf"
-            fig = newfig(0.9)
+            name = "pics/"+prefixes[l]+"_"+str(dists[k])+"_"+str(radius[r])+".png"
+            name_pgf = "pics/" + prefixes[l] + "_" + str(dists[k]) + "_" + str(radius[r]) + ".pgf"
+            #fig = newfig(0.9)
             cmap = sns.cubehelix_palette(light=1, as_cmap=True,reverse=False)
             plot = plt.imshow(np.flipud(exposure),cmap=cmap,extent=[np.min(x),np.max(x),np.min(y),np.max(y)])
-            plt.colorbar()
+            cb = plt.colorbar()
+            #cb.set_label('Dosis / uC/cm^2 ')
+            cb.set_label(r'$Dosis\, / \, \frac{\mu C}{cm^2} ')
             plt.contour(x.reshape(orig_shape), y.reshape(orig_shape), exposure, [target_dose])#[290,300, 310])
-            #plt.scatter(x_t,y_t,c="red")
-            #plt.show()
-            plt.xlabel('x / nm')
-            plt.ylabel('y / nm')
+            plt.xlabel(r'$x\,  /\,  nm')
+            plt.ylabel(r'$y\,  /\,  nm')
             plt.tight_layout(.5)
-            plt.savefig(name,dpi=300)
-            plt.savefig(name_pgf)
+            plt.savefig(name,dpi=200)
+            #plt.savefig(name_pgf)
             plt.close()
 
-            x = np.arange(np.min(x0)-10,np.max(x0)+10,step=0.2)
-            y = np.arange(np.min(y0)-10,np.max(y0)+10,step=0.2)
+            #x = np.arange(np.min(x0)-50,np.max(x0)+50,step=0.2)
+            #y = np.arange(np.min(y0)-50,np.max(y0)+50,step=0.2)
+            x = np.arange(np.min(x0)-50,np.max(x0)+50,step=1)
+            y = np.arange(np.min(y0)-50,np.max(y0)+50,step=1)
             x, y = np.meshgrid(x, y)
             orig_shape = x.shape
             x = x.ravel()
@@ -549,57 +613,58 @@ for r in radius:
             pixel_area = pixel_area * 1e-14  # cm^2
             exposure = exposure/pixel_area # uC/cm^2
 
-            name = "pics/"+prefixes[l]+"_"+str(dists[k])+"_"+str(r)+"_expected.png"
+            name = "pics/"+prefixes[l]+"_"+str(dists[k])+"_"+str(radius[r])+"_expected.png"
             name_pgf = name[:-4]+".pgf"
-            fig = newfig(0.9)
+            #fig = newfig(0.9)
             plot = plt.imshow(np.flipud(exposure >= target_dose),extent=[np.min(x),np.max(x),np.min(y),np.max(y)])
-            #plt.contour(x_t.reshape(target_shape), y_t.reshape(target_shape), target.reshape(target_shape), [299],color="black")
-            #plt.scatter(x_t,y_t,c="red")
             plt.scatter(x0,y0,c="blue")
             plt.scatter(target[:,0].ravel(), target[:,1].ravel(), c="red")
-            plt.xlabel('x / nm')
-            plt.ylabel('y / nm')
+            plt.axes().set_aspect('equal')
+            plt.xlabel(r'$x\,  /\,  nm')
+            plt.ylabel(r'$y\,  /\,  nm')
             plt.tight_layout()
-            plt.savefig(name,dpi=300)
-            plt.savefig(name_pgf)
+            plt.savefig(name,dpi=200)
+            #plt.savefig(name_pgf)
             plt.close()
 
-            name = "pics/"+prefixes[l]+"_"+str(dists[k])+"_"+str(r)+"_convergence.png"
-            name_pgf = "pics/"+prefixes[l]+"_"+str(dists[k])+"_"+str(r)+"_convergence.pgf"
-            fig = newfig(0.9)
+            name = "pics/"+prefixes[l]+"_"+str(dists[k])+"_"+str(radius[r])+"_convergence.png"
+            name_pgf = "pics/"+prefixes[l]+"_"+str(dists[k])+"_"+str(radius[r])+"_convergence.pgf"
+            #fig = newfig(0.9)
             print("time for iteration: "+ str(np.round(np.max(t),2))+" seconds")
             plt.semilogy(t,convergence)
             plt.xlabel('time / s')
             plt.ylabel('Mean Error')
             plt.tight_layout()
-            plt.savefig(name,dpi=300)
-            plt.savefig(name_pgf)
+            plt.savefig(name,dpi=200)
+            #plt.savefig(name_pgf)
             plt.close()
 
-            #plt.scatter(x_t,y_t,c="red")
-            #plt.scatter(x0,y0,c="blue")
-            #plt.show()
-
             area = np.pi * (15*repetitions/np.max(repetitions))**2
-            fig = newfig(0.9)
+            #area = np.pi * ( 0.005*(np.max(y)-np.min(y)) * repetitions / np.max(repetitions)) ** 2
+            #fig = newfig(0.9)
             plt.scatter(x0, y0, s=area, alpha=0.5,edgecolors="black",linewidths=1)
             plt.axes().set_aspect('equal', 'datalim')
-            name = "pics/"+prefixes[l]+"_"+str(dists[k])+"_"+str(r)+"_scatter.png"
-            name_pgf = "pics/"+prefixes[l]+"_"+str(dists[k])+"_"+str(r)+"_scatter.pgf"
-            plt.xlabel('x / nm')
-            plt.ylabel('y / nm')
+            name = "pics/"+prefixes[l]+"_"+str(dists[k])+"_"+str(radius[r])+"_scatter.png"
+            name_pgf = "pics/"+prefixes[l]+"_"+str(dists[k])+"_"+str(radius[r])+"_scatter.pgf"
+            plt.xlabel(r'$x\,  /\,  nm')
+            plt.ylabel(r'$y\,  /\,  nm')
             plt.tight_layout()
-            plt.savefig(name,dpi=300)
-            plt.savefig(name_pgf)
+            plt.savefig(name,dpi=200)
+            #plt.savefig(name_pgf)
             plt.close()
             x0 = x0/1000+0.5
             y0 = y0/1000+0.5
             print(repetitions)
             for j in range(len(x0)):
-                if repetitions[j] > 1:
+                if repetitions[j] >= 1:
                     Outputfile.write('RDOT '+str(x0[j]) + ', ' + str(y0[j]) + ', ' + str((repetitions[j])) + '\n')
             Outputfile.write('END' + '\n')
             Outputfile.write('\n')
             Outputfile.write('\n')
 
+            bar.next()
+            print("ETA: " + str(bar.eta_td))
+
+bar.finish()
 Outputfile.close()
+
