@@ -5,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from numba import jit,float64,int64, void, njit, prange
+from numba import jit,float32,int32, void, njit, prange
 
 import math
 
@@ -28,19 +28,20 @@ eta = 0.92
 current = 100 * 1e-12 # A
 dwell_time = 800 * 1e-9#200 * 1e-9 # s
 target_dose = 600#70 # uC/cm^2
-nmperpixel = 3 # nm
+nmperpixel = 5 # nm
 
-def put_circle(field,x0,y0,r):
+def put_circle(target,x0,y0,r,exposure_indices=None):
     r = int(r/nmperpixel) # pixel
     x0 = int(x0/nmperpixel) # pixel
     y0 = int(y0/nmperpixel) # pixel
-    x = np.linspace(-r,+r,2*r+1,dtype = np.int)
-    y = np.linspace(-r,+r,2*r+1,dtype = np.int)
+    x = np.linspace(-r,+r,2*r+1,dtype = np.int32)
+    y = np.linspace(-r,+r,2*r+1,dtype = np.int32)
     x,y = np.meshgrid(x,y)
     x = x.ravel()+x0
     y = y.ravel()+y0
 
-    exposure_indices = np.empty( shape=(0, 2) , dtype=np.int64)
+    if exposure_indices is None:
+        exposure_indices = np.empty( shape=(0, 2) , dtype=np.int32)
 
     for i in range(x.shape[0]):
         if np.sqrt((x[i]-x0)**2+(y[i]-y0)**2) < r:
@@ -48,7 +49,6 @@ def put_circle(field,x0,y0,r):
                 #field[x[i],y[i]] = 1
                 exposure_indices = np.vstack((exposure_indices,np.array([x[i],y[i]])))
 
-    target = np.zeros(field.shape,dtype=np.bool)
     for i in range(x.shape[0]):
         if np.sqrt((x[i]-x0)**2+(y[i]-y0)**2) < r:
                 target[x[i],y[i]] = 1
@@ -260,18 +260,18 @@ outfilename = 'pillars_r'+str(radius[0])+'nm_dose'+str(target_dose)+'_800ns.txt'
 
 
 
-@jit(float64(float64,float64,float64,float64),nopython=True)
+@jit(float32(float32,float32,float32,float32),nopython=True)
 def dist(x0,y0,x,y):
     return math.sqrt( (x0-x)*(x0-x)+(y0-y)*(y0-y) )
 
-@jit(void(float64[:,:],int64[:,:],float64[:]),nopython=True)
+@jit(void(float32[:,:],int32[:,:],float32[:]),nopython=True)
 def set_doses_field(field, exposure_indices, doses):
     for i in range(doses.shape[0]):
         field[exposure_indices[i,0],exposure_indices[i,1]] = doses[i]
 
-@jit(void(float64[:,:],float64[:,:],float64[:],float64[:]),nopython=True)
+@jit(void(float32[:,:],float32[:,:],float32[:],float32[:]),nopython=True)
 def convolve_with_vector(field,exposure,v,h):
-    buf = np.zeros(field.shape)
+    buf = np.zeros(field.shape,dtype=np.float32)
 
     for j in range(field.shape[1]):
         for i in range(field.shape[0]):
@@ -289,50 +289,50 @@ def convolve_with_vector(field,exposure,v,h):
                     if fj >= 0 and fj < field.shape[1]:
                         exposure[i,fj] += buf[i,j]*h[k]
 
-@jit(float64[:,:](float64[:,:],float64[:],float64[:],float64[:],float64[:]),nopython=True)
+@jit(float32[:,:](float32[:,:],float32[:],float32[:],float32[:],float32[:]),nopython=True)
 def calc_exposure(field,v_alpha,h_alpha,v_beta,h_beta):
-    exposure = np.zeros(field.shape)
+    exposure = np.zeros(field.shape,dtype=np.float32)
     convolve_with_vector(field, exposure, v_alpha, h_alpha)
     convolve_with_vector(field, exposure, v_beta, h_beta)
     return exposure
 
-@jit(float64(float64,float64), nopython=True)
+@jit(float32(float32,float32), nopython=True)
 def calc_gauß_alpha(r,alpha):
     # return 1/(np.pi*(1+eta)) * (1/alpha**2)*math.exp(-r ** 2 / alpha ** 2)
     return (1 / alpha ** 2) * math.exp(-r ** 2 / alpha ** 2)
 
-@jit(float64(float64,float64,float64), nopython=True)
+@jit(float32(float32,float32,float32), nopython=True)
 def calc_gauß_beta(r,beta,eta):
     return 1 / (np.pi * (1 + eta)) * (eta / beta) * math.exp(-r ** 2 * eta / alpha ** 2)
 
-@jit(float64[:](float64[:], float64[:], float64[:], float64[:], float64), nopython=True)
+@jit(float32[:](float32[:], float32[:], float32[:], float32[:], float32), nopython=True)
 def calc_map_alpha(x0, y0, x, y, alpha):
-    gauss = np.zeros(len(x), dtype=np.float64)
+    gauss = np.zeros(len(x), dtype=np.float32)
     for i in range(len(x)):
         for j in range(len(x0)):
             gauss[i] += calc_gauß_alpha(dist(x0[j], y0[j], x[i], y[i]),alpha)
     return gauss
 
-@jit(float64[:](float64[:], float64[:], float64[:], float64[:], float64, float64), nopython=True)
+@jit(float32[:](float32[:], float32[:], float32[:], float32[:], float32, float32), nopython=True)
 def calc_map_beta(x0, y0, x, y, beta, eta):
-    gauss = np.zeros(len(x), dtype=np.float64)
+    gauss = np.zeros(len(x), dtype=np.float32)
     for i in range(len(x)):
         for j in range(len(x0)):
             gauss[i] += calc_gauß_beta(dist(x0[j], y0[j], x[i], y[i]), beta, eta)
     return gauss
 
-@jit()
+#@jit()
 def generate_hv_vectors(alpha,beta,eta):
-    width = 4000 # nm
+    width = 5000 # nm
     size = int(np.round(width/nmperpixel/2))
-    x_psf = np.linspace(-size,size,size+1,dtype=np.float)*nmperpixel
-    y_psf = np.linspace(-size,size,size+1,dtype=np.float)*nmperpixel
+    x_psf = np.linspace(-size,size,size+1,dtype=np.float32)*nmperpixel
+    y_psf = np.linspace(-size,size,size+1,dtype=np.float32)*nmperpixel
 
     x_psf, y_psf = np.meshgrid(x_psf, y_psf)
 
-    gauß_alpha = calc_map_alpha(np.array([0.0]),np.array([0.0]),x_psf.ravel(),y_psf.ravel(),alpha)
+    gauß_alpha = calc_map_alpha(np.array([0.0],dtype=np.float32),np.array([0.0],dtype=np.float32),x_psf.ravel(),y_psf.ravel(),alpha)
     gauß_alpha = gauß_alpha.reshape(x_psf.shape)
-    gauß_beta = calc_map_beta(np.array([0.0]),np.array([0.0]),x_psf.ravel(),y_psf.ravel(),beta,eta)
+    gauß_beta = calc_map_beta(np.array([0.0],dtype=np.float32),np.array([0.0],dtype=np.float32),x_psf.ravel(),y_psf.ravel(),beta,eta)
     gauß_beta = gauß_beta.reshape(x_psf.shape)
 
     U_alpha, S_alpha, V_alpha = np.linalg.svd(gauß_alpha, full_matrices=True)
@@ -348,17 +348,17 @@ def generate_hv_vectors(alpha,beta,eta):
     h_beta = V_beta[0,:] * np.sqrt(S_beta[0])
     h_beta = np.reshape(h_beta,(1,h_beta.shape[0]))
 
-    return v_alpha.ravel(), h_alpha.ravel(), v_beta.ravel(), h_beta.ravel()
+    return np.array(v_alpha.ravel(),dtype=np.float32), np.array(h_alpha.ravel(),dtype=np.float32), np.array(v_beta.ravel(),dtype=np.float32), np.array(h_beta.ravel(),dtype=np.float32)
 
 def generate_empty_field_matrix(width):
     size = int(np.round(width/nmperpixel))
-    return np.zeros((size, size),dtype=np.float64)
+    return np.zeros((size, size),dtype=np.float32)
 
 #---------------- EVO Stuff -----------------------------------------
 
-@jit(float64[:, :](float64[:], float64[:]),nopython=True)
+@jit(float32[:, :](float32[:], float32[:]),nopython=True)
 def recombine_arrays(arr1, arr2):
-    res = np.zeros((len(arr1), 2), dtype=np.float64)
+    res = np.zeros((len(arr1), 2), dtype=np.float32)
     res[:, 0] = arr1
     res[:, 1] = arr2
     n_crossover = int(len(arr1)/3)
@@ -369,7 +369,7 @@ def recombine_arrays(arr1, arr2):
         res[k, 1] = alpha * arr2[k] + (1 - alpha) * arr1[k]
     return res
 
-@jit(float64[:](float64[:],float64, float64),nopython=True)
+@jit(float32[:](float32[:],float32, float32),nopython=True)
 def mutate(arr,sigma,mutation_rate):
     for i in range(arr.shape[0]):
         if np.random.random() < mutation_rate:
@@ -381,11 +381,11 @@ def mutate(arr,sigma,mutation_rate):
             arr[i] = arr[i] + mutation
     return arr
 
-@jit(float64[:](float64[:,:],int64[:,:],float64[:,:],float64[:],float64[:],float64[:],float64[:]),nopython=True)
+@jit(float32[:](float32[:,:],int32[:,:],float32[:,:],float32[:],float32[:],float32[:],float32[:]),nopython=True)
 def calc_fitness(population, exposure_indices, target, v_alpha, h_alpha, v_beta, h_beta):
-    fitness = np.zeros(population.shape[1],dtype=np.float64)
-    exposure = np.zeros(target.shape,dtype=np.float64)
-    field = np.zeros(target.shape, dtype=np.float64)
+    fitness = np.zeros(population.shape[1],dtype=np.float32)
+    exposure = np.zeros(target.shape,dtype=np.float32)
+    field = np.zeros(target.shape, dtype=np.float32)
 
     for p in range(population.shape[1]):
         set_doses_field(field, exposure_indices, population[:, p])
@@ -395,7 +395,7 @@ def calc_fitness(population, exposure_indices, target, v_alpha, h_alpha, v_beta,
     return fitness
 
 
-@jit(float64[:,:](float64[:,:]),nopython=True)
+@jit(float32[:,:](float32[:,:]),nopython=True)
 def recombine_population(population):
     #n_recombination = 6
     n_recombination = int(population.shape[1]/3)
@@ -410,7 +410,7 @@ def recombine_population(population):
 
     return population
 
-@jit(float64[:,:](float64[:,:],float64, float64),nopython=True)
+@jit(float32[:,:](float32[:,:],float32, float32),nopython=True)
 def mutate_population(population,sigma,mutation_rate):
 
     for i in range(population.shape[1]):
@@ -423,7 +423,7 @@ def mutate_population(population,sigma,mutation_rate):
             population[:, i] = mutate(population[:, i], sigma, mutation_rate)  #
     return population
 
-@jit(float64[:,:](float64[:,:]),nopython=True)
+@jit(float32[:,:](float32[:,:]),nopython=True)
 def check_limits(population):
     for i in range(population.shape[1]):
         for j in range(population.shape[0]):
@@ -432,40 +432,42 @@ def check_limits(population):
     return population
 
 
-population_size = 50
+population_size = 60
 #max_iter = 200000
 #max_iter = 100000
-max_iter = 200
+max_iter = 750
 
-#@jit(float64(float64[:],float64[:],float64[:],float64[:],float64[:],float64[:]))
-@jit()
+#@jit(float32(float32[:],float32[:],float32[:],float32[:],float32[:],float32[:]))
+#@jit()
 def iterate(exposure_indices,target, v_alpha, h_alpha, v_beta, h_beta):
     mutation_rate = 0.5
     logpoints = np.arange(1,max_iter,1)
     #logpoints = np.array([max_iter+1])
-    checkpoints = np.arange(10,max_iter,10)
+    checkpoints = np.arange(100,max_iter,1)
 
-    population = np.zeros((exposure_indices.shape[0],population_size),dtype=np.float64)
-    fitness = np.zeros(population_size,dtype=np.float64)
+    population = np.zeros((exposure_indices.shape[0],population_size),dtype=np.float32)
+    fitness = np.zeros(population_size,dtype=np.float32)
 
-    doses = np.zeros(exposure_indices.shape[0],dtype=np.float64)
+    doses = np.zeros(exposure_indices.shape[0],dtype=np.float32)
 
     convergence = np.zeros(max_iter)
     t = np.zeros(max_iter)
 
     i=0
     j=0
-    start = np.linspace(10000,15000,num=population_size)
+    start = np.linspace(2000000, 4000000, num=population_size, dtype=np.float32)
+    #start = np.linspace(10000,15000,num=population_size, dtype=np.float32) # for 3 nmperpixel
     for i in range(population_size):
         #population[:, i] = repetitions + np.random.randint(-50, 50)
         population[:, i] = np.repeat(start[i],len(doses))
         for j in range(len(doses)):
-            population[j, i] = population[j, i]+np.random.randint(-1000,1000)
+            population[j, i] = population[j, i]+np.random.randint(-start.max()/20,start.max()/20)
+            #population[j, i] = population[j, i]+np.random.randint(-1000,1000)
             if population[j, i] < 1:
                 population[j, i] = 1
 
     #print("Starting Iteration")
-    sigma = 1000
+    sigma_start = start.max()/40
     starttime = time.time()
     print("Entering for loop")
     for i in range(max_iter):
@@ -473,36 +475,38 @@ def iterate(exposure_indices,target, v_alpha, h_alpha, v_beta, h_beta):
         #def calc_fitness(population, exposure_indices, target, v_alpha, h_alpha, v_beta, h_beta):
         fitness = calc_fitness(population, exposure_indices, target, v_alpha, h_alpha, v_beta, h_beta)
         sorted_ind = np.argsort(fitness)
-
+        fitness = fitness[sorted_ind]
+        population = population[:,sorted_ind]
         #if fitness[sorted_ind][0] < 0.01:#0.01:
         #    break
 
         if i < 50:
-            sigma = 1000#1
+            sigma = sigma_start # 1
         elif i < 100:
-            sigma = 500#0.5
+            sigma = sigma_start/2 # 0.5
         else:
             if i in checkpoints:
-                indices = np.arange(i-50,i,step=1)
+                indices = np.arange(i-10,i,step=1)
                 slope, intercept, r_value, p_value, std_err = linregress(t[indices],convergence[indices])
                 if (std_err > 0.1) or (slope > 0):
                     sigma *= 0.98
 
                 if (std_err < 0.0001) and (slope > 0):
-                    sigma *= 1.02
+                    sigma *= 1.01
 
                 #if sigma < 0.001:
                 #    sigma = 0.001
                 # if i == int(max_iter / 2):
                 #     mutation_rate = 0.1
+            if i > 125 and len(fitness) > population_size/6:
+                population = population[:, :-1]
 
-        population = population[:,sorted_ind]
         population = recombine_population(population)
         population = mutate_population(population,sigma,mutation_rate)
         population = check_limits(population)
         if i in logpoints:
-            print("{0:7d}: fitness: {3:1.5f}, sigma: {4:1.5f}".format(i, fitness[sorted_ind][0], sigma))
-        convergence[i] = fitness[sorted_ind][0]
+            print("{0:7d}: fitness: {1:3.5f}, sigma: {2:4.5f}".format(i, fitness[0], sigma))
+        convergence[i] = fitness[0]
         t[i] = time.time() - starttime
 
     print("Done -> Mean Error: {0:1.5f}, sigma: {1:3.5f}".format(convergence[:i][-1] , sigma))
@@ -518,7 +522,7 @@ try:
     with open('hv_vectors.obj', 'rb') as fp:
         alpha_p, beta_p, eta_p, nmperpixel_p, v_alpha, h_alpha, v_beta, h_beta = pickle.load(fp)
 except:
-    print('Error loading hv_vectors, generating h and v vectors')
+    print('Error loading hv_vectors from file, generating h and v vectors')
 
 if (alpha_p != alpha) or (beta_p != beta) or (eta_p != eta):
     v_alpha, h_alpha, v_beta, h_beta = generate_hv_vectors(alpha,beta,eta)
@@ -526,17 +530,24 @@ if (alpha_p != alpha) or (beta_p != beta) or (eta_p != eta):
         pickle.dump((alpha, beta, eta, nmperpixel, v_alpha, h_alpha, v_beta, h_beta), fp)
 
 
-
 target = generate_empty_field_matrix(10000)
-exposure_indices,target = put_circle(target,5000,5000,50)
+exposure_indices,target = put_circle(target,5000,5000,35)
+exposure_indices,target = put_circle(target,5000+100,5000,35,exposure_indices=exposure_indices)
+exposure_indices,target = put_circle(target,5000-100,5000,35,exposure_indices=exposure_indices)
+exposure_indices,target = put_circle(target,5000,5000+100,35,exposure_indices=exposure_indices)
+exposure_indices,target = put_circle(target,5000,5000-100,35,exposure_indices=exposure_indices)
+exposure_indices,target = put_circle(target,5000+100,5000+100,35,exposure_indices=exposure_indices)
+exposure_indices,target = put_circle(target,5000-100,5000-100,35,exposure_indices=exposure_indices)
+exposure_indices,target = put_circle(target,5000+100,5000-100,35,exposure_indices=exposure_indices)
+exposure_indices,target = put_circle(target,5000-100,5000+100,35,exposure_indices=exposure_indices)
+
 
 target = target*600.0
 
-# doses = np.linspace(10000,15000,exposure_indices.shape[0])
+# doses = np.linspace(3000000,3500000,exposure_indices.shape[0],dtype=np.float32)
 # field = generate_empty_field_matrix(10000)
 # set_doses_field(field,exposure_indices,doses)
 # exposure = calc_exposure(field,v_alpha,h_alpha,v_beta,h_beta)
-#
 # print(np.sum(exposure-target))
 # plt.imshow(exposure-target)
 # plt.show()
@@ -545,8 +556,6 @@ target = target*600.0
 
 print("Starting Iteration")
 doses, t, convergence = iterate(exposure_indices,target, v_alpha, h_alpha, v_beta, h_beta)
-target = None
-
 
 plt.semilogy(t,convergence)
 plt.xlabel('time / s')
@@ -554,8 +563,7 @@ plt.ylabel('Mean Error')
 plt.tight_layout()
 plt.show()
 
-
-field = np.zeros(target.shape)
+field = np.zeros(target.shape,dtype=np.float32)
 set_doses_field(field,exposure_indices,doses)
 exposure = calc_exposure(field,v_alpha,h_alpha,v_beta,h_beta)
 plt.imshow(exposure)
@@ -614,9 +622,9 @@ plt.show()
 #             #plt.show()
 #             #plt.close()
 #
-#             repetitions = np.ones(len(x0),dtype=np.float64)*300
+#             repetitions = np.ones(len(x0),dtype=np.float32)*300
 #
-#             target = np.zeros((len(cx),2),dtype=np.float64)
+#             target = np.zeros((len(cx),2),dtype=np.float32)
 #             target[:,0] = cx
 #             target[:,1] = cy
 #
