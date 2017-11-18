@@ -381,17 +381,21 @@ def mutate(arr,sigma,mutation_rate):
             arr[i] = arr[i] + mutation
     return arr
 
-@jit(float32[:](float32[:,:],int32[:,:],float32[:,:],float32[:],float32[:],float32[:],float32[:]),nopython=True)
+#@jit(float32[:](float32[:,:],int32[:,:],float32[:,:],float32[:],float32[:],float32[:],float32[:]),nopython=True)
+@njit(float32[:](float32[:,:],int32[:,:],float32[:,:],float32[:],float32[:],float32[:],float32[:]),parallel=True)
 def calc_fitness(population, exposure_indices, target, v_alpha, h_alpha, v_beta, h_beta):
     fitness = np.zeros(population.shape[1],dtype=np.float32)
     exposure = np.zeros(target.shape,dtype=np.float32)
     field = np.zeros(target.shape, dtype=np.float32)
 
-    for p in range(population.shape[1]):
+    for p in prange(population.shape[1]):
         set_doses_field(field, exposure_indices, population[:, p])
         exposure = calc_exposure(field, v_alpha, h_alpha, v_beta, h_beta)
-        fitness[p] = np.sum(np.abs(np.subtract(target,exposure)))/exposure_indices.shape[0]
-
+        #fitness[p] = np.sum(np.abs(np.subtract(target,exposure)))/exposure_indices.shape[0]
+        for i in range(target.shape[0]):
+            for j in range(target.shape[1]):
+                if target[i,j] > 0:
+                    fitness[p] += np.abs(target[i,j]-exposure[i,j])
     return fitness
 
 
@@ -417,7 +421,7 @@ def mutate_population(population,sigma,mutation_rate):
         #if i < int(population.shape[1]/3):
         if i < 2:
             population[:, i] = mutate(population[:, i], sigma/10, mutation_rate)#
-        elif i < 6:
+        elif i < 4:
             population[:, i] = mutate(population[:, i], sigma/2, mutation_rate)#
         else:
             population[:, i] = mutate(population[:, i], sigma, mutation_rate)  #
@@ -435,7 +439,7 @@ def check_limits(population):
 population_size = 60
 #max_iter = 200000
 #max_iter = 100000
-max_iter = 750
+max_iter = 1000
 
 #@jit(float32(float32[:],float32[:],float32[:],float32[:],float32[:],float32[:]))
 #@jit()
@@ -453,6 +457,8 @@ def iterate(exposure_indices,target, v_alpha, h_alpha, v_beta, h_beta):
     convergence = np.zeros(max_iter)
     t = np.zeros(max_iter)
 
+    num_target = np.sum(target>0)
+
     i=0
     j=0
     start = np.linspace(2000000, 4000000, num=population_size, dtype=np.float32)
@@ -466,10 +472,8 @@ def iterate(exposure_indices,target, v_alpha, h_alpha, v_beta, h_beta):
             if population[j, i] < 1:
                 population[j, i] = 1
 
-    #print("Starting Iteration")
     sigma_start = start.max()/40
     starttime = time.time()
-    print("Entering for loop")
     for i in range(max_iter):
 
         #def calc_fitness(population, exposure_indices, target, v_alpha, h_alpha, v_beta, h_beta):
@@ -489,24 +493,20 @@ def iterate(exposure_indices,target, v_alpha, h_alpha, v_beta, h_beta):
                 indices = np.arange(i-10,i,step=1)
                 slope, intercept, r_value, p_value, std_err = linregress(t[indices],convergence[indices])
                 if (std_err > 0.1) or (slope > 0):
-                    sigma *= 0.98
+                    sigma *= 0.90
 
-                if (std_err < 0.0001) and (slope > 0):
-                    sigma *= 1.01
+                if (std_err < 0.1) and (slope > 0):
+                    sigma *= 1.02
 
-                #if sigma < 0.001:
-                #    sigma = 0.001
-                # if i == int(max_iter / 2):
-                #     mutation_rate = 0.1
-            if i > 125 and len(fitness) > population_size/6:
+            if i > 150 and len(fitness) > population_size/6:
                 population = population[:, :-1]
 
         population = recombine_population(population)
         population = mutate_population(population,sigma,mutation_rate)
         population = check_limits(population)
         if i in logpoints:
-            print("{0:7d}: fitness: {1:3.5f}, sigma: {2:4.5f}".format(i, fitness[0], sigma))
-        convergence[i] = fitness[0]
+            print("{0:7d}: fitness: {1:3.5f}, sigma: {2:4.5f}".format(i, fitness[0]/num_target, sigma))
+        convergence[i] = fitness[0]/num_target
         t[i] = time.time() - starttime
 
     print("Done -> Mean Error: {0:1.5f}, sigma: {1:3.5f}".format(convergence[:i][-1] , sigma))
@@ -540,7 +540,6 @@ exposure_indices,target = put_circle(target,5000+100,5000+100,35,exposure_indice
 exposure_indices,target = put_circle(target,5000-100,5000-100,35,exposure_indices=exposure_indices)
 exposure_indices,target = put_circle(target,5000+100,5000-100,35,exposure_indices=exposure_indices)
 exposure_indices,target = put_circle(target,5000-100,5000+100,35,exposure_indices=exposure_indices)
-
 
 target = target*600.0
 
