@@ -259,165 +259,102 @@ inner =  [ 0]
 outfilename = 'pillars_r'+str(radius[0])+'nm_dose'+str(target_dose)+'_800ns.txt'
 
 
-normalization = 1
-#http://iopscience.iop.org/article/10.1143/JJAP.35.1929/pdf
-@jit(float64(float64),nopython=True)
-def calc_prox(r):
-    alpha = 32.9 * 1.5  # nm
-    beta = 2610  # nm
-    gamma = 4.1 * 1.5  # nm
-    eta_1 = 1.66
-    eta_2 = 1.27
-    return (1/normalization) * (1/(math.pi*(1+eta_1+eta_2))) * ( (1/(alpha**2))*math.exp(-r**2/alpha**2) + (eta_1/beta**2)*math.exp(-r**2/beta**2) + (eta_2/(24*gamma**2))*math.exp(-math.sqrt(r/gamma)) )
-# [return] = C/nm !!!
-normalization = integrate.quad(lambda x: 2*np.pi*x*calc_prox(x), 0, np.inf)
-print('norm:'+str(normalization))
-#normalization = 2.41701729505915
-
-
 
 @jit(float64(float64,float64,float64,float64),nopython=True)
 def dist(x0,y0,x,y):
     return math.sqrt( (x0-x)*(x0-x)+(y0-y)*(y0-y) )
 
+@jit(void(float64[:,:],int64[:,:],float64[:]),nopython=True)
+def set_doses_field(field, exposure_indices, doses):
+    for i in range(doses.shape[0]):
+        field[exposure_indices[i,0],exposure_indices[i,1]] = doses[i]
 
+@jit(void(float64[:,:],float64[:,:],float64[:],float64[:]),nopython=True)
+def convolve_with_vector(field,exposure,v,h):
+    buf = np.zeros(field.shape)
 
-@jit(float64[:](float64[:],float64[:],float64[:],float64[:],float64[:]),nopython=True)
-def calc_map_2(x0,y0,doses,x,y):
-    exposure = np.zeros(len(x),dtype=np.float64)
-    pixel_area = np.abs(x[0] - x[1]) * np.abs(x[0] - x[1])  # nm^2
-    for i in range(len(x)):
-        for j in range(len(x0)):
-            r= dist(x0[j],y0[j],x[i],y[i])
-            exposure[i] += calc_prox(r)*doses[j]* pixel_area
+    for j in range(field.shape[1]):
+        for i in range(field.shape[0]):
+            if field[i,j] > 0:
+                for k in range(v.shape[0]):
+                    fi = i+k-int((v.shape[0]-1)/2)
+                    if fi >= 0 and fi < field.shape[0]:
+                        buf[fi,j] += field[i,j]*v[k]
+
+    for i in range(field.shape[0]):
+        for j in range(field.shape[1]):
+            if buf[i,j] < 0:
+                for k in range(h.shape[0]):
+                    fj = j+k-int((h.shape[0]-1)/2)
+                    if fj >= 0 and fj < field.shape[1]:
+                        exposure[i,fj] += buf[i,j]*h[k]
+
+@jit(float64[:,:](float64[:,:],float64[:],float64[:],float64[:],float64[:]),nopython=True)
+def calc_exposure(field,v_alpha,h_alpha,v_beta,h_beta):
+    exposure = np.zeros(field.shape)
+    convolve_with_vector(field, exposure, v_alpha, h_alpha)
+    convolve_with_vector(field, exposure, v_beta, h_beta)
     return exposure
 
+@jit(float64(float64,float64), nopython=True)
+def calc_gauß_alpha(r,alpha):
+    # return 1/(np.pi*(1+eta)) * (1/alpha**2)*math.exp(-r ** 2 / alpha ** 2)
+    return (1 / alpha ** 2) * math.exp(-r ** 2 / alpha ** 2)
 
-# @jit(void(float64[:,:],float64[:,:],int64[:],int64[:],float64[:]),nopython=True)
-# def add_exposure_dots(field,psf,x,y,doses):
-#     shape_psf = psf.shape
-#     shape_field = field.shape
-#     low_x_field = 0
-#     high_x_field = 0
-#     low_y_field = 0
-#     high_y_field = 0
-#
-#     low_x_psf = 0
-#     high_x_psf = 0
-#     low_y_psf = 0
-#     high_y_psf = 0
-#
-#     for i in range(x.shape[0]):
-#
-#         low_x_field = 0
-#         high_x_field = 0
-#         low_y_field = 0
-#         high_y_field = 0
-#
-#         low_x_psf = 0
-#         high_x_psf = 0
-#         low_y_psf = 0
-#         high_y_psf = 0
-#
-#         if int(x[i] + (shape_psf[0] - 1)/2) > shape_field[0]:
-#             high_x_field = shape_field[0]
-#             high_x_psf = int(x[i] + shape_psf[0]-1 - shape_field[0])
-#         else:
-#             high_x_field = int(x[i] + (shape_psf[0]-1)/2)+1
-#             high_x_psf = shape_psf[0]
-#
-#         if int(x[i] - (shape_psf[0] - 1) / 2) < 0:
-#             low_x_field = 0
-#             low_x_psf = int( (shape_psf[0] - 1) / 2 - x[i])
-#         else:
-#             low_x_field = int(x[i] - (shape_psf[0] - 1) / 2)
-#             low_x_psf = 0
-#
-#         if int(y[i] + (shape_psf[1] - 1) / 2) > shape_field[1]:
-#             high_y_field = shape_field[1]
-#             high_y_psf = int(y[i] + shape_psf[1]-1 - shape_field[1])
-#         else:
-#             high_y_field = int(y[i] + (shape_psf[1] - 1) / 2)+1
-#             high_y_psf = shape_psf[1]
-#
-#         if int(y[i] - (shape_psf[1] - 1) / 2) < 0:
-#             low_y_field = 0
-#             low_y_psf = int( (shape_psf[1] - 1) / 2 - y[i])
-#         else:
-#             low_y_field = int(y[i] - (shape_psf[1] - 1) / 2)
-#             low_y_psf = 0
-#
-#         # print("field")
-#         # print(field[low_x_field:high_x_field,low_y_field:high_y_field].shape)
-#         # print([low_x_field,high_x_field,low_y_field,high_y_field])
-#         # print("psf")
-#         # print(psf[low_x_psf:high_x_psf,low_y_psf:high_y_psf].shape)
-#         # print([low_x_psf,high_x_psf,low_y_psf,high_y_psf])
-#         field[low_x_field:high_x_field,low_y_field:high_y_field] += doses[i]*psf[low_x_psf:high_x_psf,low_y_psf:high_y_psf]
+@jit(float64(float64,float64,float64), nopython=True)
+def calc_gauß_beta(r,beta,eta):
+    return 1 / (np.pi * (1 + eta)) * (eta / beta) * math.exp(-r ** 2 * eta / alpha ** 2)
 
-@jit(void(float64[:, :], float64[:, :], int64[:], int64[:], float64[:]), nopython=True,nogil=True)
-def add_exposure_dots(field, psf, x, y, doses):
-    shape_psf = psf.shape
-    shape_field = field.shape
-    fx = 0
-    fy = 0
-    xp = 0
-    yp = 0
-    i=0
-    for i in range(x.shape[0]):
-        for xp in range(shape_psf[0]):
-            for yp in range(shape_psf[1]):
-                fx = x[i]+xp-int((shape_psf[0]-1)/2)
-                fy = y[i]+yp-int((shape_psf[1]-1)/2)
-                if fx < shape_field[0]:
-                    if fx >= 0:
-                        if fy < shape_field[1]:
-                            if fy >= 0:
-                                field[fx,fy] += doses[i]*psf[xp,yp]
+@jit(float64[:](float64[:], float64[:], float64[:], float64[:], float64), nopython=True)
+def calc_map_alpha(x0, y0, x, y, alpha):
+    gauss = np.zeros(len(x), dtype=np.float64)
+    for i in range(len(x)):
+        for j in range(len(x0)):
+            gauss[i] += calc_gauß_alpha(dist(x0[j], y0[j], x[i], y[i]),alpha)
+    return gauss
 
-# @jit(void(float64[:, :], float64[:, :], int64[:], int64[:], float64[:]), nopython=True,nogil=True)
-# def add_exposure_dots(field, psf, x, y, doses):
-#     shape_psf = psf.shape
-#     shape_field = field.shape
-#
-#     i = 0
-#     for i in range(x.shape[0]):
-#         field[x[i],y[i]] = 1
-#
-#     fx = 0
-#     fy = 0
-#     kx = 0
-#     ky = 0
-#     pixel = 0
-#     pixel_x = 0
-#     pixel_y = 0
-#
-#     for fx in range(shape_field[0]):
-#         for fy in range(shape_field[1]):
-#             for kx in range(-(shape_psf[0] / 2), shape_psf[0] - 1):
-#                 for ky in range(-(shape_psf[1] / 2), shape_psf[1] - 1):
-#                     pixel = 0
-#                     pixel_y = fy - ky
-#                     pixel_x = fx - kx
-#                     weighted_pixel_sum = 0
-#                     if (pixel_y >= 0) and (pixel_y < shape_field[1]) and (pixel_x >= 0) and (pixel_x < shape_field[0]):
-#                         pixel = field[pixel_y, pixel_x]
-#
-#                     weight = psf[kx + int(shape_psf[0] / 2), ky + int(shape_psf[1] / 2)]
-#
-#                     weighted_pixel_sum += pixel * weight
-#
-#             field[fy, fx] = weighted_pixel_sum
+@jit(float64[:](float64[:], float64[:], float64[:], float64[:], float64, float64), nopython=True)
+def calc_map_beta(x0, y0, x, y, beta, eta):
+    gauss = np.zeros(len(x), dtype=np.float64)
+    for i in range(len(x)):
+        for j in range(len(x0)):
+            gauss[i] += calc_gauß_beta(dist(x0[j], y0[j], x[i], y[i]), beta, eta)
+    return gauss
 
+@jit()
+def generate_hv_vectors(alpha,beta,eta):
+    width = 4000 # nm
+    size = int(np.round(width/nmperpixel/2))
+    x_psf = np.linspace(-size,size,size+1,dtype=np.float)*nmperpixel
+    y_psf = np.linspace(-size,size,size+1,dtype=np.float)*nmperpixel
 
-# @jit()
-# def add_exposure_dots(field,psf,x,y,doses):
-#     img = np.zeros(field.shape)
-#     for i in range(x.shape[0]):
-#         img[x[i],y[i]] = doses[i]
-#
-#     field = convolve2d(img, psf)
+    x_psf, y_psf = np.meshgrid(x_psf, y_psf)
 
+    gauß_alpha = calc_map_alpha(np.array([0.0]),np.array([0.0]),x_psf.ravel(),y_psf.ravel(),alpha)
+    gauß_alpha = gauß_alpha.reshape(x_psf.shape)
+    gauß_beta = calc_map_beta(np.array([0.0]),np.array([0.0]),x_psf.ravel(),y_psf.ravel(),beta,eta)
+    gauß_beta = gauß_beta.reshape(x_psf.shape)
+
+    U_alpha, S_alpha, V_alpha = np.linalg.svd(gauß_alpha, full_matrices=True)
+    U_beta, S_beta, V_beta = np.linalg.svd(gauß_beta, full_matrices=True)
+
+    v_alpha = U_alpha[:,0] * np.sqrt(S_alpha[0])
+    v_alpha = np.reshape(v_alpha,(v_alpha.shape[0],1))
+    h_alpha = V_alpha[0,:] * np.sqrt(S_alpha[0])
+    h_alpha = np.reshape(h_alpha,(1,h_alpha.shape[0]))
+
+    v_beta = U_beta[:,0] * np.sqrt(S_beta[0])
+    v_beta = np.reshape(v_beta,(v_beta.shape[0],1))
+    h_beta = V_beta[0,:] * np.sqrt(S_beta[0])
+    h_beta = np.reshape(h_beta,(1,h_beta.shape[0]))
+
+    return v_alpha.ravel(), h_alpha.ravel(), v_beta.ravel(), h_beta.ravel()
+
+def generate_empty_field_matrix(width):
+    size = int(np.round(width/nmperpixel))
+    return np.zeros((size, size),dtype=np.float64)
+
+#---------------- EVO Stuff -----------------------------------------
 
 @jit(float64[:, :](float64[:], float64[:]),nopython=True)
 def recombine_arrays(arr1, arr2):
@@ -444,22 +381,19 @@ def mutate(arr,sigma,mutation_rate):
             arr[i] = arr[i] + mutation
     return arr
 
-
-#@jit(float64[:](float64[:,:],int64[:],int64[:],float64[:,:],float64[:,:]),nopython=True,parallel=True)
-@jit()
-def calc_fitness(population,x,y,target,psf):
+@jit(float64[:](float64[:,:],int64[:,:],float64[:,:],float64[:],float64[:],float64[:],float64[:]),nopython=True)
+def calc_fitness(population, exposure_indices, target, v_alpha, h_alpha, v_beta, h_beta):
     fitness = np.zeros(population.shape[1],dtype=np.float64)
     exposure = np.zeros(target.shape,dtype=np.float64)
-    #repetitions = np.zeros(population.shape[0],dtype=np.float64)
-    pixel_area =  1 #nm^2 #pixel_area * 1e-14  # cm^2
+    field = np.zeros(target.shape, dtype=np.float64)
 
     for p in range(population.shape[1]):
-        add_exposure_dots(exposure,psf,x,y,population[:, p] * current * dwell_time)
-        exposure = (exposure* 1e6)/(pixel_area*1e-14 ) # uC/cm^2
-        fitness[p] = np.mean(np.abs(np.subtract(target,exposure)))
-        exposure = np.zeros(target.shape,dtype=np.float64)
+        set_doses_field(field, exposure_indices, population[:, p])
+        exposure = calc_exposure(field, v_alpha, h_alpha, v_beta, h_beta)
+        fitness[p] = np.sum(np.abs(np.subtract(target,exposure)))/exposure_indices.shape[0]
 
     return fitness
+
 
 @jit(float64[:,:](float64[:,:]),nopython=True)
 def recombine_population(population):
@@ -498,63 +432,59 @@ def check_limits(population):
     return population
 
 
-population_size = 30#50
+population_size = 50
 #max_iter = 200000
 #max_iter = 100000
-max_iter = 2000
+max_iter = 200
 
-#@jit()#(float64(float64[:],float64[:],float64[:],float64[:],float64[:],float64[:]))
-def iterate(x0,y0,repetitions,target):
+#@jit(float64(float64[:],float64[:],float64[:],float64[:],float64[:],float64[:]))
+@jit()
+def iterate(exposure_indices,target, v_alpha, h_alpha, v_beta, h_beta):
     mutation_rate = 0.5
     logpoints = np.arange(1,max_iter,1)
     #logpoints = np.array([max_iter+1])
     checkpoints = np.arange(10,max_iter,10)
 
-    population = np.zeros((len(x0),population_size),dtype=np.float64)
+    population = np.zeros((exposure_indices.shape[0],population_size),dtype=np.float64)
     fitness = np.zeros(population_size,dtype=np.float64)
-    pixel_area =  1 #nm^2 #pixel_area * 1e-14  # cm^2
 
+    doses = np.zeros(exposure_indices.shape[0],dtype=np.float64)
 
     convergence = np.zeros(max_iter)
     t = np.zeros(max_iter)
 
     i=0
     j=0
-    start = np.linspace(0,50,num=population_size)
+    start = np.linspace(10000,15000,num=population_size)
     for i in range(population_size):
         #population[:, i] = repetitions + np.random.randint(-50, 50)
-        population[:, i] = np.repeat(start[i],len(repetitions))
-        for j in range(len(repetitions)):
-            population[j, i] = population[j, i]+np.random.randint(-5,5)
+        population[:, i] = np.repeat(start[i],len(doses))
+        for j in range(len(doses)):
+            population[j, i] = population[j, i]+np.random.randint(-1000,1000)
             if population[j, i] < 1:
                 population[j, i] = 1
 
     #print("Starting Iteration")
-    sigma = 1
+    sigma = 1000
     starttime = time.time()
     print("Entering for loop")
     for i in range(max_iter):
-        #@jit(float64[:](float64[:, :], float64[:], float64[:], float64[:, :], float64[:, :]), nopython=True)
-        #def calc_fitness(population, x, y, target, psf):
-        fitness = calc_fitness(population,x0,y0,target,psf)
+
+        #def calc_fitness(population, exposure_indices, target, v_alpha, h_alpha, v_beta, h_beta):
+        fitness = calc_fitness(population, exposure_indices, target, v_alpha, h_alpha, v_beta, h_beta)
         sorted_ind = np.argsort(fitness)
 
-        #if 100*fitness[sorted_ind][0]/target_dose < 0.01:#0.01:
+        #if fitness[sorted_ind][0] < 0.01:#0.01:
         #    break
 
         if i < 50:
-            sigma = 2#1
+            sigma = 1000#1
         elif i < 100:
-            sigma = 1#0.5
+            sigma = 500#0.5
         else:
             if i in checkpoints:
-                indices = np.arange(i-10,i,step=1)
+                indices = np.arange(i-50,i,step=1)
                 slope, intercept, r_value, p_value, std_err = linregress(t[indices],convergence[indices])
-                #print(std_err)
-                #if slope > 0.01:
-                #    sigma -= 0.01
-                #if (std_err > 0.0003) or (slope > 0):
-                #if (std_err > 0.005) or (slope > 0):
                 if (std_err > 0.1) or (slope > 0):
                     sigma *= 0.98
 
@@ -566,74 +496,18 @@ def iterate(x0,y0,repetitions,target):
                 # if i == int(max_iter / 2):
                 #     mutation_rate = 0.1
 
-
         population = population[:,sorted_ind]
         population = recombine_population(population)
         population = mutate_population(population,sigma,mutation_rate)
         population = check_limits(population)
         if i in logpoints:
-            print("{0:7d}: fitness: {1:1.5f}%, sigma: {2:1.5f}".format(i, 100*fitness[sorted_ind][0]/target_dose, sigma))
+            print("{0:7d}: fitness: {3:1.5f}, sigma: {4:1.5f}".format(i, fitness[sorted_ind][0], sigma))
         convergence[i] = fitness[sorted_ind][0]
         t[i] = time.time() - starttime
 
-    print("Done -> Mean Error: {0:1.5f}%, sigma: {1:1.5f}".format(convergence[:i][-1] , sigma))
+    print("Done -> Mean Error: {0:1.5f}, sigma: {1:3.5f}".format(convergence[:i][-1] , sigma))
 
     return population[:,0], t[:i], convergence[:i]
-
-
-@jit(float64(float64,float64), nopython=True)
-def calc_gauß_alpha(r,alpha):
-    # return 1/(np.pi*(1+eta)) * (1/alpha**2)*math.exp(-r ** 2 / alpha ** 2)
-    return (1 / alpha ** 2) * math.exp(-r ** 2 / alpha ** 2)
-
-@jit(float64(float64,float64,float64), nopython=True)
-def calc_gauß_beta(r,beta,eta):
-    return 1 / (np.pi * (1 + eta)) * (eta / beta) * math.exp(-r ** 2 * eta / alpha ** 2)
-
-@jit(float64[:](float64[:], float64[:], float64[:], float64[:], float64), nopython=True)
-def calc_map_alpha(x0, y0, x, y, alpha):
-    gauss = np.zeros(len(x), dtype=np.float64)
-    for i in range(len(x)):
-        for j in range(len(x0)):
-            gauss[i] += calc_gauß_alpha(dist(x0[j], y0[j], x[i], y[i]),alpha)
-    return gauss
-
-@jit(float64[:](float64[:], float64[:], float64[:], float64[:], float64, float64), nopython=True)
-def calc_map_beta(x0, y0, x, y, beta, eta):
-    gauss = np.zeros(len(x), dtype=np.float64)
-    for i in range(len(x)):
-        for j in range(len(x0)):
-            gauss[i] += calc_gauß_beta(dist(x0[j], y0[j], x[i], y[i]), beta, eta)
-    return gauss
-
-@jit
-def generate_hv_vectors(alpha,beta,eta):
-    width = 4000 # nm
-    size = int(np.round(width/nmperpixel/2))
-    x_psf = np.linspace(-size,size,size+1,dtype=np.float)*nmperpixel
-    y_psf = np.linspace(-size,size,size+1,dtype=np.float)*nmperpixel
-
-    x_psf, y_psf = np.meshgrid(x_psf, y_psf)
-
-    gauß_alpha = calc_map_alpha(np.array([0.0]),np.array([0.0]),x_psf.ravel(),y_psf.ravel(),alpha)
-    gauß_alpha = gauß_alpha.reshape(x_psf.shape)
-    gauß_beta = calc_map_beta(np.array([0.0]),np.array([0.0]),x_psf.ravel(),y_psf.ravel(),beta,eta)
-    gauß_beta = gauß_beta.reshape(x_psf.shape)
-
-    U_alpha, S_alpha, V_alpha = np.linalg.svd(gauß_alpha, full_matrices=True)
-    U_beta, S_beta, V_beta = np.linalg.svd(gauß_beta, full_matrices=True)
-
-    v_alpha = U_alpha[:,0] * np.sqrt(S_alpha[0])
-    v_alpha = np.reshape(v_alpha,(v_alpha.shape[0],1))
-    h_alpha = V_alpha[0,:] * np.sqrt(S_alpha[0])
-    h_alpha = np.reshape(h_alpha,(1,h_alpha.shape[0]))
-
-    v_beta = U_beta[:,0] * np.sqrt(S_beta[0])
-    v_beta = np.reshape(v_beta,(v_beta.shape[0],1))
-    h_beta = V_beta[0,:] * np.sqrt(S_beta[0])
-    h_beta = np.reshape(h_beta,(1,h_beta.shape[0]))
-
-    return v_alpha, h_alpha, v_beta, h_beta
 
 
 alpha_p = None
@@ -652,99 +526,40 @@ if (alpha_p != alpha) or (beta_p != beta) or (eta_p != eta):
         pickle.dump((alpha, beta, eta, nmperpixel, v_alpha, h_alpha, v_beta, h_beta), fp)
 
 
-@jit(void(float64[:,:],float64[:,:],float64[:],float64[:]),nopython=True)
-def convolve_with_vector(field,exposure,v,h):
-    buf = np.zeros(field.shape)
-
-    for j in range(field.shape[1]):
-        for i in range(field.shape[0]):
-            if field[i,j] > 0:
-                for k in range(v.shape[0]):
-                    fi = i+k-int((v.shape[0]-1)/2)
-                    if fi >= 0 and fi < field.shape[0]:
-                        buf[fi,j] += field[i,j]*v[k]
-
-    for i in range(field.shape[0]):
-        for j in range(field.shape[1]):
-            if buf[i,j] < 0:
-                for k in range(h.shape[0]):
-                    fj = j+k-int((h.shape[0]-1)/2)
-                    if fj >= 0 and fj < field.shape[1]:
-                        exposure[i,fj] += buf[i,j]*h[k]
-
-def generate_empty_field_matrix(width):
-    size = int(np.round(width/nmperpixel))
-    return np.zeros((size, size))
-
-@jit(void(float64[:,:],int64[:,:],float64[:]),nopython=True)
-def set_doses_field(field, exposure_indices, doses):
-    for i in range(doses.shape[0]):
-        field[exposure_indices[i,0],exposure_indices[i,1]] += doses[i]
 
 target = generate_empty_field_matrix(10000)
 exposure_indices,target = put_circle(target,5000,5000,50)
-#print(exposure_indices)
-doses = np.linspace(1,100,exposure_indices.shape[0])
-field = generate_empty_field_matrix(10000)
-set_doses_field(field,exposure_indices,doses)
+
+target = target*600.0
+
+# doses = np.linspace(10000,15000,exposure_indices.shape[0])
+# field = generate_empty_field_matrix(10000)
+# set_doses_field(field,exposure_indices,doses)
+# exposure = calc_exposure(field,v_alpha,h_alpha,v_beta,h_beta)
+#
+# print(np.sum(exposure-target))
+# plt.imshow(exposure-target)
+# plt.show()
+
+#def iterate(x0,y0,repetitions,target):
+
+print("Starting Iteration")
+doses, t, convergence = iterate(exposure_indices,target, v_alpha, h_alpha, v_beta, h_beta)
+target = None
 
 
-target = target*600
-
-
-
-exposure = np.zeros(target.shape)
-convolve_with_vector(field,exposure,v_alpha.ravel(),h_alpha.ravel())
-convolve_with_vector(field,exposure,v_beta.ravel(),h_beta.ravel())
-
-plt.imshow(field)
+plt.semilogy(t,convergence)
+plt.xlabel('time / s')
+plt.ylabel('Mean Error')
+plt.tight_layout()
 plt.show()
 
+
+field = np.zeros(target.shape)
+set_doses_field(field,exposure_indices,doses)
+exposure = calc_exposure(field,v_alpha,h_alpha,v_beta,h_beta)
 plt.imshow(exposure)
 plt.show()
-
-#
-# doses = np.zeros(np.sum(field).shape[0],dtype=np.float)+1
-#
-# exposure = np.zeros((5000,5000))
-# add_exposure_dots(exposure,psf,x0,y0,doses)
-# plt.imshow(exposure)
-# plt.show()
-# exposure = None
-#
-# plt.scatter(x0,y0)
-# plt.show()
-#
-#
-#
-#
-# #def iterate(x0,y0,repetitions,target):
-#
-# repetitions = np.ones(len(x0),dtype=np.float64)*10
-# print("Starting Iteration")
-# repetitions, t, convergence = iterate(x0, y0, repetitions,target)
-# target = None
-#
-# plt.semilogy(t,convergence)
-# plt.xlabel('time / s')
-# plt.ylabel('Mean Error')
-# plt.tight_layout()
-# plt.show()
-#
-# exposure = np.zeros((5000,5000))
-# add_exposure_dots(exposure,psf,x0,y0,doses)
-# plt.imshow(exposure)
-# plt.show()
-#
-# area = np.pi * (15*repetitions/np.max(repetitions))**2
-# #area = np.pi * ( 0.005*(np.max(y)-np.min(y)) * repetitions / np.max(repetitions)) ** 2
-# #fig = newfig(0.9)
-# plt.scatter(x0, y0, s=area, alpha=0.5,edgecolors="black",linewidths=1)
-# plt.axes().set_aspect('equal', 'datalim')
-# plt.xlabel(r'$x\,  /\,  nm')
-# plt.ylabel(r'$y\,  /\,  nm')
-# plt.tight_layout()
-# plt.show()
 
 #
 #
