@@ -14,39 +14,50 @@ import time
 from scipy.stats import linregress
 from scipy import integrate
 from scipy.signal import convolve,convolve2d
+from scipy import linalg
 
-from progress.bar import Bar
+try:
+   import cPickle as pickle
+except:
+   import pickle
 
-alpha = 32.9*1.5 #nm
-beta = 2610 #nm
-gamma = 4.1*1.5 #nm
-eta_1 = 1.66
-eta_2 = 1.27
+alpha = 14 # nm
+beta = 2810 # nm
+eta = 0.92
 
-
-def rot(alpha):
-    return np.matrix( [[np.cos(alpha),-np.sin(alpha)],[np.sin(alpha),np.cos(alpha)]] )
+current = 100 * 1e-12 # A
+dwell_time = 800 * 1e-9#200 * 1e-9 # s
+target_dose = 600#70 # uC/cm^2
+nmperpixel = 3 # nm
 
 def put_circle(field,x0,y0,r):
+    r = int(r/nmperpixel) # pixel
+    x0 = int(x0/nmperpixel) # pixel
+    y0 = int(y0/nmperpixel) # pixel
     x = np.linspace(-r,+r,2*r+1,dtype = np.int)
     y = np.linspace(-r,+r,2*r+1,dtype = np.int)
     x,y = np.meshgrid(x,y)
     x = x.ravel()+x0
     y = y.ravel()+y0
 
-    mask = np.ones(x.shape,dtype=np.bool)
-    for i in range(x.shape[0]):
-        if i%10:
-            mask[i] = 0
-        if np.sqrt((x[i]-x0)**2+(y[i]-y0)**2) > r:
-                mask[i] = 0
-
+    exposure_indices = np.empty( shape=(0, 2) , dtype=np.int64)
 
     for i in range(x.shape[0]):
         if np.sqrt((x[i]-x0)**2+(y[i]-y0)**2) < r:
-                field[x[i],y[i]] = 1
+            if i % 2:
+                #field[x[i],y[i]] = 1
+                exposure_indices = np.vstack((exposure_indices,np.array([x[i],y[i]])))
 
-    return x[mask],y[mask], field
+    target = np.zeros(field.shape,dtype=np.bool)
+    for i in range(x.shape[0]):
+        if np.sqrt((x[i]-x0)**2+(y[i]-y0)**2) < r:
+                target[x[i],y[i]] = 1
+
+    return exposure_indices, target
+
+
+def rot(alpha):
+    return np.matrix( [[np.cos(alpha),-np.sin(alpha)],[np.sin(alpha),np.cos(alpha)]] )
 
 
 def get_trimer(dist,r,n, inner_circle=False, centre_dot = False,dose_check_radius = 3):
@@ -220,42 +231,7 @@ def get_triple90(dist,r,n, inner_circle=False, centre_dot = False,dose_check_rad
     return get_triple_rotated(dist,r,n,inner_circle,centre_dot,dose_check_radius,2*np.pi/4)
 
 
-current = 100 * 1e-12 # A
-dwell_time = 800 * 1e-9#200 * 1e-9 # s
-target_dose = 600#70 # uC/cm^2
-nmperpixel = 1 # nm
 
-
-#outfilename = 'emre2.txt'
-#outfilename = 'asymdimer.txt'
-#outfilename = 'single.txt'
-#outfilename = 'pillars_r'+str(radius[0])+'nm_dose'+str(target_dose)+'.txt'
-#outfilename = 'test.txt'
-#outfilename = 'hexgrid.txt'
-#outfilename = 'anni_struct.txt'
-
-
-# prefixes = ["pillar_dimer","pillar_trimer","pillar_hexamer","pillar_asymdimer","pillar_triple"]
-# structures = [get_dimer,get_trimer,get_hexamer,get_asymdimer,get_triple]
-# dists = [30]
-# for i in range(30):
-#     dists.append(dists[i]+2)
-#for i in range(10):
-#    dists.append(dists[i] + 5)
-
-#prefixes = ["pillar_dimer","pillar_trimer","pillar_triple"]
-#structures = [get_dimer,get_trimer,get_triple]
-#dists = [10]
-#for i in range(30):
-#    dists.append(dists[i]+2)
-
-# prefixes = ["pillar_dimer"]#,"pillar_trimer","pillar_hexamer"]#,"pillar_asymdimer","pillar_triple"]
-# structures = [get_dimer]#,get_trimer,get_hexamer]#,get_asymdimer,get_triple]
-# dists = [40]
-# radius = 100
-#prefixes = ["kreis"]
-#structures = [get_single]#,get_trimer,get_hexamer,get_asymdimer,get_triple]
-#dists = [1]
 
 prefixes = ["pillar_single","pillar_dimer","pillar_trimer","pillar_hexamer","pillar_asymdimer","pillar_triple00","pillar_triple30","pillar_triple60","pillar_triple90"]
 structures = [get_single,get_dimer,get_trimer,get_hexamer,get_asymdimer,get_triple00,get_triple30,get_triple60,get_triple90]
@@ -287,15 +263,24 @@ normalization = 1
 #http://iopscience.iop.org/article/10.1143/JJAP.35.1929/pdf
 @jit(float64(float64),nopython=True)
 def calc_prox(r):
+    alpha = 32.9 * 1.5  # nm
+    beta = 2610  # nm
+    gamma = 4.1 * 1.5  # nm
+    eta_1 = 1.66
+    eta_2 = 1.27
     return (1/normalization) * (1/(math.pi*(1+eta_1+eta_2))) * ( (1/(alpha**2))*math.exp(-r**2/alpha**2) + (eta_1/beta**2)*math.exp(-r**2/beta**2) + (eta_2/(24*gamma**2))*math.exp(-math.sqrt(r/gamma)) )
 # [return] = C/nm !!!
 normalization = integrate.quad(lambda x: 2*np.pi*x*calc_prox(x), 0, np.inf)
 print('norm:'+str(normalization))
 #normalization = 2.41701729505915
 
+
+
 @jit(float64(float64,float64,float64,float64),nopython=True)
 def dist(x0,y0,x,y):
     return math.sqrt( (x0-x)*(x0-x)+(y0-y)*(y0-y) )
+
+
 
 @jit(float64[:](float64[:],float64[:],float64[:],float64[:],float64[:]),nopython=True)
 def calc_map_2(x0,y0,doses,x,y):
@@ -596,65 +581,170 @@ def iterate(x0,y0,repetitions,target):
     return population[:,0], t[:i], convergence[:i]
 
 
-x_psf = np.linspace(-1500,1500,3001,dtype=np.float)
-y_psf = x_psf.copy()
-x_psf, y_psf = np.meshgrid(x_psf, y_psf)
+@jit(float64(float64,float64), nopython=True)
+def calc_gauß_alpha(r,alpha):
+    # return 1/(np.pi*(1+eta)) * (1/alpha**2)*math.exp(-r ** 2 / alpha ** 2)
+    return (1 / alpha ** 2) * math.exp(-r ** 2 / alpha ** 2)
 
-psf = calc_map_2(np.array([0.0]),np.array([0.0]),np.array([1.0]),x_psf.ravel(),y_psf.ravel())
-psf = psf.reshape(x_psf.shape)
+@jit(float64(float64,float64,float64), nopython=True)
+def calc_gauß_beta(r,beta,eta):
+    return 1 / (np.pi * (1 + eta)) * (eta / beta) * math.exp(-r ** 2 * eta / alpha ** 2)
+
+@jit(float64[:](float64[:], float64[:], float64[:], float64[:], float64), nopython=True)
+def calc_map_alpha(x0, y0, x, y, alpha):
+    gauss = np.zeros(len(x), dtype=np.float64)
+    for i in range(len(x)):
+        for j in range(len(x0)):
+            gauss[i] += calc_gauß_alpha(dist(x0[j], y0[j], x[i], y[i]),alpha)
+    return gauss
+
+@jit(float64[:](float64[:], float64[:], float64[:], float64[:], float64, float64), nopython=True)
+def calc_map_beta(x0, y0, x, y, beta, eta):
+    gauss = np.zeros(len(x), dtype=np.float64)
+    for i in range(len(x)):
+        for j in range(len(x0)):
+            gauss[i] += calc_gauß_beta(dist(x0[j], y0[j], x[i], y[i]), beta, eta)
+    return gauss
+
+@jit
+def generate_hv_vectors(alpha,beta,eta):
+    width = 4000 # nm
+    size = int(np.round(width/nmperpixel/2))
+    x_psf = np.linspace(-size,size,size+1,dtype=np.float)*nmperpixel
+    y_psf = np.linspace(-size,size,size+1,dtype=np.float)*nmperpixel
+
+    x_psf, y_psf = np.meshgrid(x_psf, y_psf)
+
+    gauß_alpha = calc_map_alpha(np.array([0.0]),np.array([0.0]),x_psf.ravel(),y_psf.ravel(),alpha)
+    gauß_alpha = gauß_alpha.reshape(x_psf.shape)
+    gauß_beta = calc_map_beta(np.array([0.0]),np.array([0.0]),x_psf.ravel(),y_psf.ravel(),beta,eta)
+    gauß_beta = gauß_beta.reshape(x_psf.shape)
+
+    U_alpha, S_alpha, V_alpha = np.linalg.svd(gauß_alpha, full_matrices=True)
+    U_beta, S_beta, V_beta = np.linalg.svd(gauß_beta, full_matrices=True)
+
+    v_alpha = U_alpha[:,0] * np.sqrt(S_alpha[0])
+    v_alpha = np.reshape(v_alpha,(v_alpha.shape[0],1))
+    h_alpha = V_alpha[0,:] * np.sqrt(S_alpha[0])
+    h_alpha = np.reshape(h_alpha,(1,h_alpha.shape[0]))
+
+    v_beta = U_beta[:,0] * np.sqrt(S_beta[0])
+    v_beta = np.reshape(v_beta,(v_beta.shape[0],1))
+    h_beta = V_beta[0,:] * np.sqrt(S_beta[0])
+    h_beta = np.reshape(h_beta,(1,h_beta.shape[0]))
+
+    return v_alpha, h_alpha, v_beta, h_beta
 
 
-target = np.zeros((5000,5000))
-x0,y0,target = put_circle(target,2500,2500,20)
-#target = np.convolve(target,psf)
-#target = convolve2d(target, psf)
-#target = target/target.max()
+alpha_p = None
+beta_p = None
+eta_p = None
+nmperpixel_p = None
+try:
+    with open('hv_vectors.obj', 'rb') as fp:
+        alpha_p, beta_p, eta_p, nmperpixel_p, v_alpha, h_alpha, v_beta, h_beta = pickle.load(fp)
+except:
+    print('Error loading hv_vectors, generating h and v vectors')
+
+if (alpha_p != alpha) or (beta_p != beta) or (eta_p != eta):
+    v_alpha, h_alpha, v_beta, h_beta = generate_hv_vectors(alpha,beta,eta)
+    with open('hv_vectors.obj', 'wb') as fp:
+        pickle.dump((alpha, beta, eta, nmperpixel, v_alpha, h_alpha, v_beta, h_beta), fp)
+
+
+@jit(void(float64[:,:],float64[:,:],float64[:],float64[:]),nopython=True)
+def convolve_with_vector(field,exposure,v,h):
+    buf = np.zeros(field.shape)
+
+    for j in range(field.shape[1]):
+        for i in range(field.shape[0]):
+            if field[i,j] > 0:
+                for k in range(v.shape[0]):
+                    fi = i+k-int((v.shape[0]-1)/2)
+                    if fi >= 0 and fi < field.shape[0]:
+                        buf[fi,j] += field[i,j]*v[k]
+
+    for i in range(field.shape[0]):
+        for j in range(field.shape[1]):
+            if buf[i,j] < 0:
+                for k in range(h.shape[0]):
+                    fj = j+k-int((h.shape[0]-1)/2)
+                    if fj >= 0 and fj < field.shape[1]:
+                        exposure[i,fj] += buf[i,j]*h[k]
+
+def generate_empty_field_matrix(width):
+    size = int(np.round(width/nmperpixel))
+    return np.zeros((size, size))
+
+@jit(void(float64[:,:],int64[:,:],float64[:]),nopython=True)
+def set_doses_field(field, exposure_indices, doses):
+    for i in range(doses.shape[0]):
+        field[exposure_indices[i,0],exposure_indices[i,1]] += doses[i]
+
+target = generate_empty_field_matrix(10000)
+exposure_indices,target = put_circle(target,5000,5000,50)
+#print(exposure_indices)
+doses = np.linspace(1,100,exposure_indices.shape[0])
+field = generate_empty_field_matrix(10000)
+set_doses_field(field,exposure_indices,doses)
+
+
 target = target*600
 
-plt.imshow(target)
+
+
+exposure = np.zeros(target.shape)
+convolve_with_vector(field,exposure,v_alpha.ravel(),h_alpha.ravel())
+convolve_with_vector(field,exposure,v_beta.ravel(),h_beta.ravel())
+
+plt.imshow(field)
 plt.show()
 
-doses = np.zeros(x0.shape[0],dtype=np.float)+1
-
-exposure = np.zeros((5000,5000))
-add_exposure_dots(exposure,psf,x0,y0,doses)
-plt.imshow(exposure)
-plt.show()
-exposure = None
-
-plt.scatter(x0,y0)
-plt.show()
-
-
-
-
-#def iterate(x0,y0,repetitions,target):
-
-repetitions = np.ones(len(x0),dtype=np.float64)*10
-print("Starting Iteration")
-repetitions, t, convergence = iterate(x0, y0, repetitions,target)
-target = None
-
-plt.semilogy(t,convergence)
-plt.xlabel('time / s')
-plt.ylabel('Mean Error')
-plt.tight_layout()
-plt.show()
-
-exposure = np.zeros((5000,5000))
-add_exposure_dots(exposure,psf,x0,y0,doses)
 plt.imshow(exposure)
 plt.show()
 
-area = np.pi * (15*repetitions/np.max(repetitions))**2
-#area = np.pi * ( 0.005*(np.max(y)-np.min(y)) * repetitions / np.max(repetitions)) ** 2
-#fig = newfig(0.9)
-plt.scatter(x0, y0, s=area, alpha=0.5,edgecolors="black",linewidths=1)
-plt.axes().set_aspect('equal', 'datalim')
-plt.xlabel(r'$x\,  /\,  nm')
-plt.ylabel(r'$y\,  /\,  nm')
-plt.tight_layout()
-plt.show()
+#
+# doses = np.zeros(np.sum(field).shape[0],dtype=np.float)+1
+#
+# exposure = np.zeros((5000,5000))
+# add_exposure_dots(exposure,psf,x0,y0,doses)
+# plt.imshow(exposure)
+# plt.show()
+# exposure = None
+#
+# plt.scatter(x0,y0)
+# plt.show()
+#
+#
+#
+#
+# #def iterate(x0,y0,repetitions,target):
+#
+# repetitions = np.ones(len(x0),dtype=np.float64)*10
+# print("Starting Iteration")
+# repetitions, t, convergence = iterate(x0, y0, repetitions,target)
+# target = None
+#
+# plt.semilogy(t,convergence)
+# plt.xlabel('time / s')
+# plt.ylabel('Mean Error')
+# plt.tight_layout()
+# plt.show()
+#
+# exposure = np.zeros((5000,5000))
+# add_exposure_dots(exposure,psf,x0,y0,doses)
+# plt.imshow(exposure)
+# plt.show()
+#
+# area = np.pi * (15*repetitions/np.max(repetitions))**2
+# #area = np.pi * ( 0.005*(np.max(y)-np.min(y)) * repetitions / np.max(repetitions)) ** 2
+# #fig = newfig(0.9)
+# plt.scatter(x0, y0, s=area, alpha=0.5,edgecolors="black",linewidths=1)
+# plt.axes().set_aspect('equal', 'datalim')
+# plt.xlabel(r'$x\,  /\,  nm')
+# plt.ylabel(r'$y\,  /\,  nm')
+# plt.tight_layout()
+# plt.show()
 
 #
 #
