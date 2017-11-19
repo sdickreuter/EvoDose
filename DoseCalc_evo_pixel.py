@@ -21,7 +21,7 @@ try:
 except:
    import pickle
 
-alpha = 14 # nm
+alpha = 14*2 # nm
 beta = 2810 # nm
 eta = 0.92
 
@@ -45,7 +45,7 @@ def put_circle(target,x0,y0,r,exposure_indices=None):
 
     for i in range(x.shape[0]):
         if np.sqrt((x[i]-x0)**2+(y[i]-y0)**2) < r:
-            if i % 2:
+            #if i % 2:
                 #field[x[i],y[i]] = 1
                 exposure_indices = np.vstack((exposure_indices,np.array([x[i],y[i]])))
 
@@ -256,7 +256,8 @@ inner =  [ 0]
 #inner =  [ 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
 
 
-outfilename = 'pillars_r'+str(radius[0])+'nm_dose'+str(target_dose)+'_800ns.txt'
+#outfilename = 'pillars_r'+str(radius[0])+'nm_dose'+str(target_dose)+'_800ns.txt'
+outfilename = 'test.txt'
 
 
 
@@ -356,18 +357,30 @@ def generate_empty_field_matrix(width):
 
 #---------------- EVO Stuff -----------------------------------------
 
+# @jit(float32[:, :](float32[:], float32[:]),nopython=True)
+# def recombine_arrays(arr1, arr2):
+#     res = np.zeros((len(arr1), 2), dtype=np.float32)
+#     #res[:, 0] = arr1
+#     #res[:, 1] = arr2
+#     n_crossover = int(len(arr1)/3)
+#     for i in range(n_crossover):
+#         k = np.random.randint(0, len(arr1) - 1)
+#         alpha = np.random.random()
+#         res[k, 0] = alpha * arr1[k] + (1 - alpha) * arr2[k]
+#         res[k, 1] = alpha * arr2[k] + (1 - alpha) * arr1[k]
+#     return res
+
 @jit(float32[:, :](float32[:], float32[:]),nopython=True)
 def recombine_arrays(arr1, arr2):
     res = np.zeros((len(arr1), 2), dtype=np.float32)
-    res[:, 0] = arr1
-    res[:, 1] = arr2
-    n_crossover = int(len(arr1)/3)
-    for i in range(n_crossover):
-        k = np.random.randint(0, len(arr1) - 1)
-        alpha = np.random.random()
-        res[k, 0] = alpha * arr1[k] + (1 - alpha) * arr2[k]
-        res[k, 1] = alpha * arr2[k] + (1 - alpha) * arr1[k]
+    #res[:, 0] = arr1
+    #res[:, 1] = arr2
+    for i in range(len(arr1)):
+        alpha = 1/3
+        res[i, 0] = alpha * arr1[i] + (1 - alpha) * arr2[i]
+        res[i, 1] = alpha * arr2[i] + (1 - alpha) * arr1[i]
     return res
+
 
 @jit(float32[:](float32[:],float32, float32),nopython=True)
 def mutate(arr,sigma,mutation_rate):
@@ -381,29 +394,30 @@ def mutate(arr,sigma,mutation_rate):
             arr[i] = arr[i] + mutation
     return arr
 
-#@jit(float32[:](float32[:,:],int32[:,:],float32[:,:],float32[:],float32[:],float32[:],float32[:]),nopython=True)
-@njit(float32[:](float32[:,:],int32[:,:],float32[:,:],float32[:],float32[:],float32[:],float32[:]),parallel=True)
+@jit(float32[:](float32[:,:],int32[:,:],float32[:,:],float32[:],float32[:],float32[:],float32[:]),nopython=True)
+#@njit(float32[:](float32[:,:],int32[:,:],float32[:,:],float32[:],float32[:],float32[:],float32[:]),parallel=True)
 def calc_fitness(population, exposure_indices, target, v_alpha, h_alpha, v_beta, h_beta):
     fitness = np.zeros(population.shape[1],dtype=np.float32)
     exposure = np.zeros(target.shape,dtype=np.float32)
     field = np.zeros(target.shape, dtype=np.float32)
 
-    for p in prange(population.shape[1]):
+    for p in range(population.shape[1]):
         set_doses_field(field, exposure_indices, population[:, p])
         exposure = calc_exposure(field, v_alpha, h_alpha, v_beta, h_beta)
-        #fitness[p] = np.sum(np.abs(np.subtract(target,exposure)))/exposure_indices.shape[0]
+        # fitness[p] = np.sum(np.abs(np.subtract(target,exposure)))#/exposure_indices.shape[0]
         for i in range(target.shape[0]):
             for j in range(target.shape[1]):
                 if target[i,j] > 0:
                     fitness[p] += np.abs(target[i,j]-exposure[i,j])
+
     return fitness
 
 
 @jit(float32[:,:](float32[:,:]),nopython=True)
 def recombine_population(population):
     #n_recombination = 6
-    n_recombination = int(population.shape[1]/3)
-    #n_recombination = int(population.shape[1]/2)
+    #n_recombination = int(population.shape[1]/3)
+    n_recombination = int(population.shape[1]/2)
 
     for i in range(int(n_recombination/2)):
         k = 2*i
@@ -413,6 +427,7 @@ def recombine_population(population):
         population[:, -l] = r_rec[:, 1]
 
     return population
+
 
 @jit(float32[:,:](float32[:,:],float32, float32),nopython=True)
 def mutate_population(population,sigma,mutation_rate):
@@ -431,15 +446,13 @@ def mutate_population(population,sigma,mutation_rate):
 def check_limits(population):
     for i in range(population.shape[1]):
         for j in range(population.shape[0]):
-            if population[j, i] < 0.1:
+            if population[j, i] < 1:
                 population[j, i] = 0
     return population
 
 
 population_size = 60
-#max_iter = 200000
-#max_iter = 100000
-max_iter = 1000
+max_iter = 10000
 
 #@jit(float32(float32[:],float32[:],float32[:],float32[:],float32[:],float32[:]))
 #@jit()
@@ -457,11 +470,9 @@ def iterate(exposure_indices,target, v_alpha, h_alpha, v_beta, h_beta):
     convergence = np.zeros(max_iter)
     t = np.zeros(max_iter)
 
-    num_target = np.sum(target>0)
-
     i=0
     j=0
-    start = np.linspace(2000000, 4000000, num=population_size, dtype=np.float32)
+    start = np.linspace(10000, 20000, num=population_size, dtype=np.float32)
     #start = np.linspace(10000,15000,num=population_size, dtype=np.float32) # for 3 nmperpixel
     for i in range(population_size):
         #population[:, i] = repetitions + np.random.randint(-50, 50)
@@ -472,7 +483,8 @@ def iterate(exposure_indices,target, v_alpha, h_alpha, v_beta, h_beta):
             if population[j, i] < 1:
                 population[j, i] = 1
 
-    sigma_start = start.max()/40
+    sigma_start = start.max()/2
+    sigma = sigma_start
     starttime = time.time()
     for i in range(max_iter):
 
@@ -484,29 +496,46 @@ def iterate(exposure_indices,target, v_alpha, h_alpha, v_beta, h_beta):
         #if fitness[sorted_ind][0] < 0.01:#0.01:
         #    break
 
-        if i < 50:
-            sigma = sigma_start # 1
-        elif i < 100:
-            sigma = sigma_start/2 # 0.5
-        else:
+        #if i < 50:
+        #    sigma = sigma_start # 1
+        #elif i < 100:
+        #    sigma = sigma_start/2 # 0.5
+        #else:
+        if i > 20:
+            if i == 5000:
+                mutation_rate = 0.3
             if i in checkpoints:
-                indices = np.arange(i-10,i,step=1)
+                indices = np.arange(i-20,i,step=1)
                 slope, intercept, r_value, p_value, std_err = linregress(t[indices],convergence[indices])
-                if (std_err > 0.1) or (slope > 0):
-                    sigma *= 0.90
+                #if (std_err > 0.1) or (slope > 0):
+                if (slope > 0):
+                    sigma *= 0.95
 
-                if (std_err < 0.1) and (slope > 0):
-                    sigma *= 1.02
+                if (std_err < 1.0) and (slope > 0):
+                    sigma *= 1.1
 
-            if i > 150 and len(fitness) > population_size/6:
-                population = population[:, :-1]
+            if i > 250 and len(fitness) > population_size/2:
+                if np.random.random() < 0.5:
+                    population = population[:, :-1]
+
+            if i > 1000 and len(fitness) > population_size/4:
+                if np.random.random() < 0.5:
+                    population = population[:, :-1]
+
+            if i > 5000 and len(fitness) > population_size/4:
+                if np.random.random() < 0.5:
+                    population = population[:, :-1]
+
+            if i > 7500 and len(fitness) > 8:
+                if np.random.random() < 0.5:
+                    population = population[:, :-1]
 
         population = recombine_population(population)
         population = mutate_population(population,sigma,mutation_rate)
         population = check_limits(population)
         if i in logpoints:
-            print("{0:7d}: fitness: {1:3.5f}, sigma: {2:4.5f}".format(i, fitness[0]/num_target, sigma))
-        convergence[i] = fitness[0]/num_target
+            print("{0:7d}: fitness: {1:3.1f}, sigma: {2:4.5f}".format(i, fitness[0], sigma))
+        convergence[i] = fitness[0]
         t[i] = time.time() - starttime
 
     print("Done -> Mean Error: {0:1.5f}, sigma: {1:3.5f}".format(convergence[:i][-1] , sigma))
@@ -530,43 +559,72 @@ if (alpha_p != alpha) or (beta_p != beta) or (eta_p != eta):
         pickle.dump((alpha, beta, eta, nmperpixel, v_alpha, h_alpha, v_beta, h_beta), fp)
 
 
-target = generate_empty_field_matrix(10000)
-exposure_indices,target = put_circle(target,5000,5000,35)
-exposure_indices,target = put_circle(target,5000+100,5000,35,exposure_indices=exposure_indices)
-exposure_indices,target = put_circle(target,5000-100,5000,35,exposure_indices=exposure_indices)
-exposure_indices,target = put_circle(target,5000,5000+100,35,exposure_indices=exposure_indices)
-exposure_indices,target = put_circle(target,5000,5000-100,35,exposure_indices=exposure_indices)
-exposure_indices,target = put_circle(target,5000+100,5000+100,35,exposure_indices=exposure_indices)
-exposure_indices,target = put_circle(target,5000-100,5000-100,35,exposure_indices=exposure_indices)
-exposure_indices,target = put_circle(target,5000+100,5000-100,35,exposure_indices=exposure_indices)
-exposure_indices,target = put_circle(target,5000-100,5000+100,35,exposure_indices=exposure_indices)
+target = generate_empty_field_matrix(5000)
+exposure_indices,target = put_circle(target,2500,2500,35)
+exposure_indices,target = put_circle(target,2500+90,2500,35,exposure_indices=exposure_indices)
+exposure_indices,target = put_circle(target,2500-90,2500,35,exposure_indices=exposure_indices)
+exposure_indices,target = put_circle(target,2500,2500+90,35,exposure_indices=exposure_indices)
+exposure_indices,target = put_circle(target,2500,2500-90,35,exposure_indices=exposure_indices)
+exposure_indices,target = put_circle(target,2500+90,2500+90,35,exposure_indices=exposure_indices)
+exposure_indices,target = put_circle(target,2500-90,2500-90,35,exposure_indices=exposure_indices)
+exposure_indices,target = put_circle(target,2500+90,2500-90,35,exposure_indices=exposure_indices)
+exposure_indices,target = put_circle(target,2500-90,2500+90,35,exposure_indices=exposure_indices)
 
 target = target*600.0
 
-# doses = np.linspace(3000000,3500000,exposure_indices.shape[0],dtype=np.float32)
-# field = generate_empty_field_matrix(10000)
-# set_doses_field(field,exposure_indices,doses)
-# exposure = calc_exposure(field,v_alpha,h_alpha,v_beta,h_beta)
-# print(np.sum(exposure-target))
-# plt.imshow(exposure-target)
-# plt.show()
+plt.imshow(target)
+plt.show()
+
+
+doses = np.linspace(10000,20000,exposure_indices.shape[0],dtype=np.float32)
+field = generate_empty_field_matrix(5000)
+set_doses_field(field,exposure_indices,doses)
+exposure = calc_exposure(field,v_alpha,h_alpha,v_beta,h_beta)
+print(np.sum(exposure-target))
+plt.imshow(exposure-target)
+plt.show()
 
 #def iterate(x0,y0,repetitions,target):
 
 print("Starting Iteration")
 doses, t, convergence = iterate(exposure_indices,target, v_alpha, h_alpha, v_beta, h_beta)
 
-plt.semilogy(t,convergence)
+#plt.semilogy(t,convergence)
+plt.plot(t,convergence)
 plt.xlabel('time / s')
 plt.ylabel('Mean Error')
 plt.tight_layout()
-plt.show()
+#plt.show()
+plt.savefig('pics/convergence.png',dpi=600)
+plt.close()
+
 
 field = np.zeros(target.shape,dtype=np.float32)
 set_doses_field(field,exposure_indices,doses)
 exposure = calc_exposure(field,v_alpha,h_alpha,v_beta,h_beta)
 plt.imshow(exposure)
-plt.show()
+#plt.show()
+plt.tight_layout()
+plt.savefig('pics/exposure.png',dpi=1200)
+plt.close()
+
+plt.imshow(field)
+#plt.show()
+plt.tight_layout()
+plt.savefig('pics/doses.png',dpi=1200)
+plt.close()
+
+
+# Outputfile = open(outfilename,'w')
+#
+# #Outputfile.write('D ' + prefixes[l] +'-'+str(dists[k])+", 11000, 11000, 5, 5" + '\n')
+# #Outputfile.write('D ' + prefixes[l] + '-' + str(r) + ", 11000, 11000, 5, 5" + '\n')
+# Outputfile.write('I 1' + '\n')
+# Outputfile.write('C '+str(int(dwell_time*1e9)) + '\n')
+# Outputfile.write("FSIZE 15 micrometer" + '\n')
+# Outputfile.write("UNIT 1 micrometer" + '\n')
+
+
 
 #
 #
