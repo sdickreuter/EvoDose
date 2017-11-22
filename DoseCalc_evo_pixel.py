@@ -3,7 +3,7 @@ import numpy as np
 #from plotsettings import *
 
 import matplotlib.pyplot as plt
-import seaborn as sns
+#import seaborn as sns
 
 from numba import jit,float32,int32, void, njit, prange
 
@@ -15,6 +15,9 @@ from scipy.stats import linregress
 from scipy import integrate
 from scipy.signal import convolve,convolve2d
 from scipy import linalg
+from drawnow import drawnow, figure
+from skimage.morphology import disk
+from skimage.filters import rank
 
 try:
    import cPickle as pickle
@@ -28,12 +31,12 @@ eta = 0.92
 current = 100 * 1e-12 # A
 dwell_time = 800 * 1e-9#200 * 1e-9 # s
 target_dose = 600#70 # uC/cm^2
-nmperpixel = 5 # nm
+nmperpixel = 4 # nm
 
 def put_circle(target,x0,y0,r,exposure_indices=None):
     r = int(r/nmperpixel) # pixel
-    x0 = int(x0/nmperpixel) # pixel
-    y0 = int(y0/nmperpixel) # pixel
+    x0 = int(x0/nmperpixel)-1 # pixel
+    y0 = int(y0/nmperpixel)-1 # pixel
     x = np.linspace(-r,+r,2*r+1,dtype = np.int32)
     y = np.linspace(-r,+r,2*r+1,dtype = np.int32)
     x,y = np.meshgrid(x,y)
@@ -45,218 +48,13 @@ def put_circle(target,x0,y0,r,exposure_indices=None):
 
     for i in range(x.shape[0]):
         if np.sqrt((x[i]-x0)**2+(y[i]-y0)**2) < r:
-            #if i % 2:
-                #field[x[i],y[i]] = 1
                 exposure_indices = np.vstack((exposure_indices,np.array([x[i],y[i]])))
-
-    for i in range(x.shape[0]):
-        if np.sqrt((x[i]-x0)**2+(y[i]-y0)**2) < r:
                 target[x[i],y[i]] = 1
 
     return exposure_indices, target
 
 
-def rot(alpha):
-    return np.matrix( [[np.cos(alpha),-np.sin(alpha)],[np.sin(alpha),np.cos(alpha)]] )
 
-
-def get_trimer(dist,r,n, inner_circle=False, centre_dot = False,dose_check_radius = 3):
-    x = np.zeros(0)
-    y = np.zeros(0)
-    cx = np.zeros(0)
-    cy = np.zeros(0)
-    v = np.array( [0,0.5*(dist+2*r)/np.sin(np.pi/3)] )
-    m = 3
-    for i in range(m):
-        x2, y2 = (v*rot(2*np.pi/m*i)).A1
-        x1,y1,cx1,cy1 = get_circle(r,n,inner_circle, centre_dot, dose_check_radius)
-
-        x = np.hstack( (x,x1+x2) )
-        y = np.hstack( (y,y1+y2) )
-        cx = np.hstack( (cx,cx1+x2) )
-        cy = np.hstack( (cy,cy1+y2) )
-
-    x += 500
-    y += 500
-    cx += 500
-    cy += 500
-
-    return x,y,cx,cy
-
-def get_dimer(dist,r,n, inner_circle=False, centre_dot = False,dose_check_radius = 3):
-    x1,y1,cx1,cy1 = get_circle(r,n,inner_circle, centre_dot,dose_check_radius)
-    x2,y2,cx2,cy2 = get_circle(r,n,inner_circle, centre_dot,dose_check_radius)
-    x1 -= (r+dist/2)
-    x2 += (r+dist/2)
-    cx1 -= (r+dist/2)
-    cx2 += (r+dist/2)
-
-    x = np.concatenate((x1,x2))+500
-    y = np.concatenate((y1,y2))+500
-    cx = np.concatenate((cx1,cx2))+500
-    cy = np.concatenate((cy1,cy2))+500
-    # cy = np.concatenate((y1,y2))+500
-
-    return x,y, cx, cy
-
-def get_hexamer(dist,r,n, inner_circle=False, centre_dot = False,dose_check_radius = 3):
-    x = np.zeros(0)
-    y = np.zeros(0)
-    cx = np.zeros(0)
-    cy = np.zeros(0)
-    v = np.array( [0.5*(dist+2*r)/np.sin(np.pi/6),0] )
-    m = 6
-    for i in range(m):
-        x2, y2 = (v*rot(2*np.pi/m*i)).A1
-        x1,y1,cx1,cy1 = get_circle(r,n,inner_circle, centre_dot)
-
-        x = np.hstack( (x,x1+x2) )
-        y = np.hstack( (y,y1+y2) )
-        cx = np.hstack( (cx,cx1+x2) )
-        cy = np.hstack( (cy,cy1+y2) )
-
-    x += 500
-    y += 500
-    cx += 500
-    cy += 500
-
-    return x,y,cx,cy
-
-
-def get_asymdimer(dist,r,n, inner_circle=False, centre_dot = False,dose_check_radius = 3):
-    x1,y1,cx1,cy1 = get_circle(r,n,inner_circle, centre_dot,dose_check_radius)
-    r2 = 1.5*r
-    x2,y2,cx2,cy2 = get_circle(r2,n,inner_circle, centre_dot,dose_check_radius)
-    x1 -= r+dist/2
-    x2 += r2+dist/2
-    cx1 -= r+dist/2
-    cx2 += r2+dist/2
-
-    x = np.concatenate((x1,x2))+500
-    y = np.concatenate((y1,y2))+500
-    cx = np.concatenate((cx1,cx2))+500
-    cy = np.concatenate((cy1,cy2))+500
-    return x,y,cx,cy
-
-
-def get_asymtrimer(dist,r,n, inner_circle=False, centre_dot = False,dose_check_radius = 3):
-    x1,y1,cx1,cy1 = get_circle(r,n,inner_circle, centre_dot,dose_check_radius)
-    r2 = 1.5*r
-    x2,y2,cx2,cy2 = get_circle(r2,n,inner_circle, centre_dot,dose_check_radius)
-    x1 += r+r2+dist
-    cx1 += r+r2+dist
-    #x2 += r2+dist/2
-
-    r3 = 1.5*r2
-    x3,y3,cx3,cy3 = get_circle(r3,n,inner_circle, centre_dot,dose_check_radius)
-    x3 -= r2+r3+dist
-    cx3 -= r2+r3+dist
-
-    x = np.concatenate((x1,x2,x3))+500
-    y = np.concatenate((y1,y2,y3))+500
-    cx = np.concatenate((cx1,cx2,cx3))+500
-    cy = np.concatenate((cy1,cy2,cy3))+500
-
-    return x,y,cx,cy
-
-
-def get_single(dist,r,n, inner_circle=False, centre_dot = False,dose_check_radius = 3):
-    x1, y1, cx1, cy1 = get_circle(r, n, inner_circle, centre_dot,dose_check_radius)
-
-    #if r >= 50:
-    #    x1,y1 = get_circle(r,n=48,inner_circle=True,centre_dot=True)
-    #else:
-    #    x1, y1 = get_circle(r, n=32, inner_circle=False, centre_dot=True)
-
-    x = x1+500
-    y = y1+500
-    cx = cx1+500
-    cy = cy1+500
-
-    return x,y,cx,cy
-
-
-
-def get_triple(dist,r,n, inner_circle=False, centre_dot = False,dose_check_radius = 3):
-    x1,y1,cx1,cy1 = get_circle(r,n,inner_circle, centre_dot,dose_check_radius)
-    x2,y2,cx2,cy2 = get_circle(r,n,inner_circle, centre_dot,dose_check_radius)
-    x3,y3,cx3,cy3 = get_circle(r,n,inner_circle, centre_dot,dose_check_radius)
-    x1 -= 2*r+dist
-    x2 += 2*r+dist
-    cx1 -= 2*r+dist
-    cx2 += 2*r+dist
-
-    x = np.concatenate((x1,x2,x3))+500
-    y = np.concatenate((y1,y2,y3))+500
-    cx = np.concatenate((cx1, cx2, cx3)) + 500
-    cy = np.concatenate((cy1, cy2, cy3)) + 500
-
-    return x,y,cx,cy
-
-
-
-def get_triple_rotated(dist,r,n, inner_circle=False, centre_dot = False,dose_check_radius = 3,alpha = 0):
-    x1,y1,cx1,cy1 = get_circle(r,n,inner_circle, centre_dot,dose_check_radius)
-    x2,y2,cx2,cy2 = get_circle(r,n,inner_circle, centre_dot,dose_check_radius)
-    x3,y3,cx3,cy3 = get_circle(r,n,inner_circle, centre_dot,dose_check_radius)
-    x1 -= 2*r+dist
-    cx1 -= 2*r+dist
-
-    #v = np.array([r - dose_check_radius, 0])
-    v = np.array([2*r+dist, 0])
-    x_rot, y_rot = (v * rot(alpha)).A1
-
-    x2 += x_rot
-    cx2 += x_rot
-    y2 -= y_rot
-    cy2 -= y_rot
-
-    x = np.concatenate((x1,x2,x3))+500
-    y = np.concatenate((y1,y2,y3))+500
-    cx = np.concatenate((cx1, cx2, cx3)) + 500
-    cy = np.concatenate((cy1, cy2, cy3)) + 500
-
-    return x,y,cx,cy
-
-def get_triple00(dist,r,n, inner_circle=False, centre_dot = False,dose_check_radius = 3):
-    return get_triple_rotated(dist,r,n,inner_circle,centre_dot,dose_check_radius,0)
-
-def get_triple30(dist,r,n, inner_circle=False, centre_dot = False,dose_check_radius = 3):
-    return get_triple_rotated(dist,r,n,inner_circle,centre_dot,dose_check_radius,2*np.pi/12)
-
-def get_triple60(dist,r,n, inner_circle=False, centre_dot = False,dose_check_radius = 3):
-    return get_triple_rotated(dist,r,n,inner_circle,centre_dot,dose_check_radius,2*np.pi/6)
-
-def get_triple90(dist,r,n, inner_circle=False, centre_dot = False,dose_check_radius = 3):
-    return get_triple_rotated(dist,r,n,inner_circle,centre_dot,dose_check_radius,2*np.pi/4)
-
-
-
-
-prefixes = ["pillar_single","pillar_dimer","pillar_trimer","pillar_hexamer","pillar_asymdimer","pillar_triple00","pillar_triple30","pillar_triple60","pillar_triple90"]
-structures = [get_single,get_dimer,get_trimer,get_hexamer,get_asymdimer,get_triple00,get_triple30,get_triple60,get_triple90]
-
-# prefixes = ["pillar_dimer"]
-# structures = [get_dimer]
-# dists = [30]
-
-dists = [20]
-for i in range(30):
-    dists.append(dists[i]+2)
-radius = [30]
-n =      [32]
-centre = [ 0]
-inner =  [ 0]
-
-
-#dists = [0]
-#radius = [15,20,25,30,35,40,45,50,60,70,80,90,100,120,140,160,180,200]
-#n =      [12,12,12,12,12,14,14,16,16,18,18,20, 22, 24, 26, 28, 30, 32]
-#centre = [ 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-#inner =  [ 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-
-
-#outfilename = 'pillars_r'+str(radius[0])+'nm_dose'+str(target_dose)+'_800ns.txt'
 outfilename = 'test.txt'
 
 
@@ -278,7 +76,7 @@ def convolve_with_vector(field,exposure,v,h):
         for i in range(field.shape[0]):
             if field[i,j] > 0:
                 for k in range(v.shape[0]):
-                    fi = i+k-int((v.shape[0]-1)/2)
+                    fi = i+k-int((v.shape[0])/2)
                     if fi >= 0 and fi < field.shape[0]:
                         buf[fi,j] += field[i,j]*v[k]
 
@@ -286,7 +84,7 @@ def convolve_with_vector(field,exposure,v,h):
         for j in range(field.shape[1]):
             if buf[i,j] < 0:
                 for k in range(h.shape[0]):
-                    fj = j+k-int((h.shape[0]-1)/2)
+                    fj = j+k-int((h.shape[0])/2)
                     if fj >= 0 and fj < field.shape[1]:
                         exposure[i,fj] += buf[i,j]*h[k]
 
@@ -324,7 +122,8 @@ def calc_map_beta(x0, y0, x, y, beta, eta):
 
 #@jit()
 def generate_hv_vectors(alpha,beta,eta):
-    width = 5000 # nm
+    #width = 5000 # nm
+    width = 1000  # nm
     size = int(np.round(width/nmperpixel/2))
     x_psf = np.linspace(-size,size,size+1,dtype=np.float32)*nmperpixel
     y_psf = np.linspace(-size,size,size+1,dtype=np.float32)*nmperpixel
@@ -357,29 +156,31 @@ def generate_empty_field_matrix(width):
 
 #---------------- EVO Stuff -----------------------------------------
 
-# @jit(float32[:, :](float32[:], float32[:]),nopython=True)
-# def recombine_arrays(arr1, arr2):
-#     res = np.zeros((len(arr1), 2), dtype=np.float32)
-#     #res[:, 0] = arr1
-#     #res[:, 1] = arr2
-#     n_crossover = int(len(arr1)/3)
-#     for i in range(n_crossover):
-#         k = np.random.randint(0, len(arr1) - 1)
-#         alpha = np.random.random()
-#         res[k, 0] = alpha * arr1[k] + (1 - alpha) * arr2[k]
-#         res[k, 1] = alpha * arr2[k] + (1 - alpha) * arr1[k]
-#     return res
-
 @jit(float32[:, :](float32[:], float32[:]),nopython=True)
 def recombine_arrays(arr1, arr2):
     res = np.zeros((len(arr1), 2), dtype=np.float32)
-    #res[:, 0] = arr1
-    #res[:, 1] = arr2
-    for i in range(len(arr1)):
-        alpha = 1/3
-        res[i, 0] = alpha * arr1[i] + (1 - alpha) * arr2[i]
-        res[i, 1] = alpha * arr2[i] + (1 - alpha) * arr1[i]
+    res[:, 0] = arr1
+    res[:, 1] = arr2
+    n_crossover = int(len(arr1)/3)
+    for i in range(n_crossover):
+        k = np.random.randint(0, len(arr1) - 1)
+        alpha = np.random.random()
+        #alpha = 1/3
+        res[k, 0] = alpha * arr1[k] + (1 - alpha) * arr2[k]
+        res[k, 1] = alpha * arr2[k] + (1 - alpha) * arr1[k]
     return res
+
+# @jit(float32[:, :](float32[:], float32[:]),nopython=True)
+# def recombine_arrays(arr1, arr2):
+#     res = np.zeros((len(arr1), 2), dtype=np.float32)
+#     res[:, 0] = arr1
+#     res[:, 1] = arr2
+#     for i in range(len(arr1)):
+#         alpha = 1/3
+#         #alpha = np.random.random()
+#         res[i, 0] = alpha * arr1[i] + (1 - alpha) * arr2[i]
+#         res[i, 1] = alpha * arr2[i] + (1 - alpha) * arr1[i]
+#     return res
 
 
 @jit(float32[:](float32[:],float32, float32),nopython=True)
@@ -400,33 +201,64 @@ def calc_fitness(population, exposure_indices, target, v_alpha, h_alpha, v_beta,
     fitness = np.zeros(population.shape[1],dtype=np.float32)
     exposure = np.zeros(target.shape,dtype=np.float32)
     field = np.zeros(target.shape, dtype=np.float32)
-
     for p in range(population.shape[1]):
         set_doses_field(field, exposure_indices, population[:, p])
         exposure = calc_exposure(field, v_alpha, h_alpha, v_beta, h_beta)
-        # fitness[p] = np.sum(np.abs(np.subtract(target,exposure)))#/exposure_indices.shape[0]
+        #fitness[p] = np.sum(np.abs(np.subtract(target,exposure)))#/exposure_indices.shape[0]
         for i in range(target.shape[0]):
             for j in range(target.shape[1]):
                 if target[i,j] > 0:
                     fitness[p] += np.abs(target[i,j]-exposure[i,j])
+        #fitness[p] += np.sum(population[:,p]>np.var(population[:,p]))#/exposure_indices.shape[0]
+        # for i in range(field.shape[0]):
+        #     for j in range(field.shape[1]):
+        #         if field[i,j] > 0:
+        #             neighbors = np.array([field[i+1,j],field[i-1,j],field[i,j+1],field[i,j-1],field[i+1,j+1],field[i+1,j-1],field[i-1,j+1],field[i-1,j-1]],dtype=np.float32)
+        #             notzero = np.sum(neighbors>0)+1
+        #             fitness[p] += np.abs(field[i,j]- (field[i,j] +field[i+1,j]+field[i,j+1]+field[i-1,j]+field[i,j-1]+field[i+1,j+1]+field[i+1,j-1]+field[i-1,j+1]+field[i-1,j-1])/notzero)/10
+
+        fitness[p] /= exposure_indices.shape[0]
 
     return fitness
 
 
+# @jit(float32[:,:](float32[:,:]),nopython=True)
+# def recombine_population(population):
+#     #n_recombination = 6
+#     #n_recombination = int(population.shape[1]/3)
+#     #n_recombination = int(population.shape[1]*3/4)
+#     n_recombination = int(population.shape[1])
+#
+#     for i in range(int(n_recombination/2)):
+#         k = 2*i
+#         l = 2*i+1
+#         r_rec = recombine_arrays(population[:, k],population[:, l])
+#         population[:, -k] = r_rec[:, 0]
+#         population[:, -l] = r_rec[:, 1]
+#
+#     return population
+
 @jit(float32[:,:](float32[:,:]),nopython=True)
 def recombine_population(population):
-    #n_recombination = 6
-    #n_recombination = int(population.shape[1]/3)
-    n_recombination = int(population.shape[1]/2)
+    new_pop = np.zeros(population.shape,dtype=np.float32)
+    n = population.shape[1]
 
-    for i in range(int(n_recombination/2)):
-        k = 2*i
-        l = 2*i+1
-        r_rec = recombine_arrays(population[:, k],population[:, l])
-        population[:, -k] = r_rec[:, 0]
-        population[:, -l] = r_rec[:, 1]
+    fit = np.arange(0,int(n/2))
 
-    return population
+    i = 0
+
+    while True:
+        mother = np.random.randint(0,len(fit))
+        father = np.random.randint(0,len(fit))
+        r_rec = recombine_arrays(population[:, mother], population[:, father])
+        new_pop[:, i] =  r_rec[:, 0]
+        new_pop[:, i+1] = r_rec[:, 1]
+        i += 2
+        if i >= n:
+             break
+
+    return new_pop
+
 
 
 @jit(float32[:,:](float32[:,:],float32, float32),nopython=True)
@@ -451,16 +283,21 @@ def check_limits(population):
     return population
 
 
-population_size = 60
+population_size = 100
 max_iter = 10000
 
 #@jit(float32(float32[:],float32[:],float32[:],float32[:],float32[:],float32[:]))
 #@jit()
 def iterate(exposure_indices,target, v_alpha, h_alpha, v_beta, h_beta):
+    doplot = True
+
+    if doplot:
+        field = np.zeros(target.shape, dtype=np.float32)
+
     mutation_rate = 0.5
     logpoints = np.arange(1,max_iter,1)
     #logpoints = np.array([max_iter+1])
-    checkpoints = np.arange(100,max_iter,1)
+    checkpoints = np.arange(11,max_iter,1)
 
     population = np.zeros((exposure_indices.shape[0],population_size),dtype=np.float32)
     fitness = np.zeros(population_size,dtype=np.float32)
@@ -472,18 +309,15 @@ def iterate(exposure_indices,target, v_alpha, h_alpha, v_beta, h_beta):
 
     i=0
     j=0
-    start = np.linspace(10000, 20000, num=population_size, dtype=np.float32)
+    start = np.linspace(2000, 10000, num=population_size, dtype=np.float32) # for 5nmperpixel
+    #start = np.linspace(10000, 20000, num=population_size, dtype=np.float32) # for 5nmperpixel
     #start = np.linspace(10000,15000,num=population_size, dtype=np.float32) # for 3 nmperpixel
     for i in range(population_size):
-        #population[:, i] = repetitions + np.random.randint(-50, 50)
-        population[:, i] = np.repeat(start[i],len(doses))
-        for j in range(len(doses)):
-            population[j, i] = population[j, i]+np.random.randint(-start.max()/20,start.max()/20)
-            #population[j, i] = population[j, i]+np.random.randint(-1000,1000)
-            if population[j, i] < 1:
-                population[j, i] = 1
+        population[:, i] = np.repeat(start[i],population.shape[0])
+        for j in range(population.shape[0]):
+            population[j, i] = np.random.randint(-start.max()/50,start.max()/50)
 
-    sigma_start = start.max()/2
+    sigma_start = start.max()/10
     sigma = sigma_start
     starttime = time.time()
     for i in range(max_iter):
@@ -501,40 +335,57 @@ def iterate(exposure_indices,target, v_alpha, h_alpha, v_beta, h_beta):
         #elif i < 100:
         #    sigma = sigma_start/2 # 0.5
         #else:
-        if i > 20:
+        std_err = 0.0
+        slope = 0.0
+        if i > 11:
             if i == 5000:
                 mutation_rate = 0.3
+
+            indices = np.arange(i-10,i,step=1)
+            slope, intercept, r_value, p_value, std_err = linregress(indices,convergence[indices])
+            std_err = np.abs((np.std(convergence[indices])*100)/intercept)
+
             if i in checkpoints:
-                indices = np.arange(i-20,i,step=1)
-                slope, intercept, r_value, p_value, std_err = linregress(t[indices],convergence[indices])
+
                 #if (std_err > 0.1) or (slope > 0):
-                if (slope > 0):
-                    sigma *= 0.95
+                #if (slope > 0):
+                if ((std_err > 5) and (slope < -5)) or (std_err > 0.3 and slope > -0.1):
+                    if sigma > 10:
+                        sigma *= 0.95
 
-                if (std_err < 1.0) and (slope > 0):
-                    sigma *= 1.1
+                if (std_err < 0.1) and (slope > 0) and (sigma < sigma_start/10):
+                    sigma *= 1.02
+                    #sigma += sigma_start/20
 
-            if i > 250 and len(fitness) > population_size/2:
+            if i > 1000 and len(fitness) > population_size/2:
                 if np.random.random() < 0.5:
                     population = population[:, :-1]
 
-            if i > 1000 and len(fitness) > population_size/4:
+            #if i > 1000 and len(fitness) > population_size/4:
+            #    if np.random.random() < 0.5:
+            #        population = population[:, :-1]
+
+            # if i > 5000 and len(fitness) > population_size/4:
+            #    if np.random.random() < 0.5:
+            #        population = population[:, :-1]
+
+            if i > 7500 and len(fitness) > population_size/3:
                 if np.random.random() < 0.5:
                     population = population[:, :-1]
 
-            if i > 5000 and len(fitness) > population_size/4:
-                if np.random.random() < 0.5:
-                    population = population[:, :-1]
-
-            if i > 7500 and len(fitness) > 8:
-                if np.random.random() < 0.5:
-                    population = population[:, :-1]
+            if doplot and not i%10:
+                set_doses_field(field, exposure_indices, population[0,0]+population[1:,0])
+                field[field==0] = np.nan
+                plt.imshow(field[100:150,100:150])
+                plt.colorbar()
+                plt.savefig('current.png',dpi=300)
+                plt.close()
 
         population = recombine_population(population)
         population = mutate_population(population,sigma,mutation_rate)
         population = check_limits(population)
         if i in logpoints:
-            print("{0:7d}: fitness: {1:3.1f}, sigma: {2:4.5f}".format(i, fitness[0], sigma))
+            print("{0:7d}: fitness: {1:5.1f}, sigma: {2:5.5f}, std_err: {3:5.5f}, slope: {4:5.5f}".format(i, fitness[0], sigma,std_err,slope))
         convergence[i] = fitness[0]
         t[i] = time.time() - starttime
 
@@ -559,16 +410,28 @@ if (alpha_p != alpha) or (beta_p != beta) or (eta_p != eta):
         pickle.dump((alpha, beta, eta, nmperpixel, v_alpha, h_alpha, v_beta, h_beta), fp)
 
 
-target = generate_empty_field_matrix(5000)
-exposure_indices,target = put_circle(target,2500,2500,35)
-exposure_indices,target = put_circle(target,2500+90,2500,35,exposure_indices=exposure_indices)
-exposure_indices,target = put_circle(target,2500-90,2500,35,exposure_indices=exposure_indices)
-exposure_indices,target = put_circle(target,2500,2500+90,35,exposure_indices=exposure_indices)
-exposure_indices,target = put_circle(target,2500,2500-90,35,exposure_indices=exposure_indices)
-exposure_indices,target = put_circle(target,2500+90,2500+90,35,exposure_indices=exposure_indices)
-exposure_indices,target = put_circle(target,2500-90,2500-90,35,exposure_indices=exposure_indices)
-exposure_indices,target = put_circle(target,2500+90,2500-90,35,exposure_indices=exposure_indices)
-exposure_indices,target = put_circle(target,2500-90,2500+90,35,exposure_indices=exposure_indices)
+target = generate_empty_field_matrix(1000)
+
+exposure_indices,target = put_circle(target,500+40,500,35)
+exposure_indices,target = put_circle(target,500-40,500,35,exposure_indices=exposure_indices)
+
+doses = np.repeat(1,exposure_indices.shape[0])
+doses = np.array(doses,dtype=np.float32)
+field = generate_empty_field_matrix(1000)
+set_doses_field(field,exposure_indices,doses)
+
+plt.imshow(target-field)
+plt.show()
+
+# exposure_indices,target = put_circle(target,2500,2500,35)
+# exposure_indices,target = put_circle(target,2500+90,2500,35,exposure_indices=exposure_indices)
+# exposure_indices,target = put_circle(target,2500-90,2500,35,exposure_indices=exposure_indices)
+# exposure_indices,target = put_circle(target,2500,2500+90,35,exposure_indices=exposure_indices)
+# exposure_indices,target = put_circle(target,2500,2500-90,35,exposure_indices=exposure_indices)
+# exposure_indices,target = put_circle(target,2500+90,2500+90,35,exposure_indices=exposure_indices)
+# exposure_indices,target = put_circle(target,2500-90,2500-90,35,exposure_indices=exposure_indices)
+# exposure_indices,target = put_circle(target,2500+90,2500-90,35,exposure_indices=exposure_indices)
+# exposure_indices,target = put_circle(target,2500-90,2500+90,35,exposure_indices=exposure_indices)
 
 target = target*600.0
 
@@ -576,8 +439,8 @@ plt.imshow(target)
 plt.show()
 
 
-doses = np.linspace(10000,20000,exposure_indices.shape[0],dtype=np.float32)
-field = generate_empty_field_matrix(5000)
+doses = np.linspace(2000,4000,exposure_indices.shape[0],dtype=np.float32)
+field = generate_empty_field_matrix(1000)
 set_doses_field(field,exposure_indices,doses)
 exposure = calc_exposure(field,v_alpha,h_alpha,v_beta,h_beta)
 print(np.sum(exposure-target))
@@ -589,8 +452,8 @@ plt.show()
 print("Starting Iteration")
 doses, t, convergence = iterate(exposure_indices,target, v_alpha, h_alpha, v_beta, h_beta)
 
-#plt.semilogy(t,convergence)
-plt.plot(t,convergence)
+plt.semilogy(t,convergence)
+#plt.plot(t,convergence)
 plt.xlabel('time / s')
 plt.ylabel('Mean Error')
 plt.tight_layout()
@@ -599,19 +462,33 @@ plt.savefig('pics/convergence.png',dpi=600)
 plt.close()
 
 
+
 field = np.zeros(target.shape,dtype=np.float32)
 set_doses_field(field,exposure_indices,doses)
 exposure = calc_exposure(field,v_alpha,h_alpha,v_beta,h_beta)
-plt.imshow(exposure)
+plt.imshow((exposure-target)[100:150,100:150])
+plt.colorbar()
 #plt.show()
 plt.tight_layout()
-plt.savefig('pics/exposure.png',dpi=1200)
+plt.savefig('pics/exposure-target.png',dpi=1200)
 plt.close()
 
-plt.imshow(field)
+plt.imshow(field[100:150,100:150])
+plt.colorbar()
 #plt.show()
 plt.tight_layout()
 plt.savefig('pics/doses.png',dpi=1200)
+plt.close()
+
+field = np.zeros(target.shape,dtype=np.float32)
+set_doses_field(field,exposure_indices,doses)
+exposure = calc_exposure(field,v_alpha,h_alpha,v_beta,h_beta)
+plt.imshow(exposure[100:150,100:150])
+plt.colorbar()
+plt.contour(exposure[100:150,100:150], [600])  # [290,300, 310])
+#plt.show()
+plt.tight_layout()
+plt.savefig('pics/exposure.png',dpi=1200)
 plt.close()
 
 

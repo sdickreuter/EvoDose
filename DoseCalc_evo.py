@@ -16,6 +16,12 @@ from scipy import integrate
 
 from progress.bar import Bar
 
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
+
+
 alpha = 32.9*1.5 #nm
 beta = 2610 #nm
 gamma = 4.1*1.5 #nm
@@ -337,16 +343,22 @@ outfilename = 'pillars_r'+str(radius[0])+'nm_dose'+str(target_dose)+'_800ns.txt'
 
 
 
-normalization = 1
-#http://iopscience.iop.org/article/10.1143/JJAP.35.1929/pdf
-@jit(float64(float64),nopython=True)
-def calc_prox(r):
-    return (1/normalization) * (1/(math.pi*(1+eta_1+eta_2))) * ( (1/(alpha**2))*math.exp(-r**2/alpha**2) + (eta_1/beta**2)*math.exp(-r**2/beta**2) + (eta_2/(24*gamma**2))*math.exp(-math.sqrt(r/gamma)) )
-# [return] = C/nm !!!
-normalization = integrate.quad(lambda x: 2*np.pi*x*calc_prox(x), 0, np.inf)
-print('norm:'+str(normalization))
-#normalization = 2.41701729505915
+# normalization = 1
+# #http://iopscience.iop.org/article/10.1143/JJAP.35.1929/pdf
+# @jit(float64(float64),nopython=True)
+# def calc_prox(r):
+#     return (1/normalization) * (1/(math.pi*(1+eta_1+eta_2))) * ( (1/(alpha**2))*math.exp(-r**2/alpha**2) + (eta_1/beta**2)*math.exp(-r**2/beta**2) + (eta_2/(24*gamma**2))*math.exp(-math.sqrt(r/gamma)) )
+# # [return] = C/nm !!!
+# normalization = integrate.quad(lambda x: 2*np.pi*x*calc_prox(x), 0, np.inf)
+# print('norm:'+str(normalization))
+# #normalization = 2.41701729505915
 
+with open('psf_spline.pkl', 'rb') as f:
+    psf_spline = pickle.load(f)
+
+@jit
+def calc_prox(r):
+    return psf_spline(r)
 
 
 @jit(float64(float64,float64,float64,float64),nopython=True)
@@ -354,7 +366,8 @@ def dist(x0,y0,x,y):
     return math.sqrt( (x0-x)*(x0-x)+(y0-y)*(y0-y) )
 
 
-@jit(float64[:](float64[:],float64[:],float64[:],float64[:],float64[:]),nopython=True)
+#@jit(float64[:](float64[:],float64[:],float64[:],float64[:],float64[:]),nopython=True)
+@jit
 def calc_map_2(x0,y0,doses,x,y):
     exposure = np.zeros(len(x),dtype=np.float64)
     pixel_area = np.abs(x[0] - x[1]) * np.abs(x[0] - x[1])  # nm^2
