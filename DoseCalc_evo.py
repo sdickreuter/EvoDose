@@ -22,11 +22,14 @@ except ImportError:
     import pickle
 
 
-alpha = 32.9*1.5 #nm
-beta = 2610 #nm
-gamma = 4.1*1.5 #nm
-eta_1 = 1.66
-eta_2 = 1.27
+
+a = 1.92520559e+01
+b = 1.40697462e-04
+c = 1.66089035e+00
+alpha = -1.70504796e+01
+beta = 3.74249694e+03
+gamma = 3.50332807e+00
+
 
 
 def rot(alpha):
@@ -353,12 +356,12 @@ outfilename = 'pillars_r'+str(radius[0])+'nm_dose'+str(target_dose)+'_800ns.txt'
 # print('norm:'+str(normalization))
 # #normalization = 2.41701729505915
 
-with open('psf_spline.pkl', 'rb') as f:
-    psf_spline = pickle.load(f)
-
-@jit
+normalization0 = 17971.512008579837
 def calc_prox(r):
-    return psf_spline(r)
+    return   ( a*np.exp(-r**2/alpha**2) + b*np.exp(-r**2/beta**2) + c*np.exp(-np.sqrt(r/gamma)) )
+normalization = integrate.quad(lambda x: 2*np.pi*x*calc_prox(x), 0, np.inf)
+print('norm:'+str(normalization))
+
 
 
 @jit(float64(float64,float64,float64,float64),nopython=True)
