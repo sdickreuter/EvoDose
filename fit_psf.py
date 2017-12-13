@@ -94,7 +94,6 @@ res = minimize(err_fun, p0, method='nelder-mead', options={'xtol': 1e-20, 'disp'
 popt = res.x
 
 
-print(p0)
 print(popt)
 
 #x = np.linspace(x_m.min(),x_m.max(),500,dtype=np.float64)
@@ -143,6 +142,28 @@ plt.show()
 normalization0 = 17971.512008579837
 normalization = integrate.quad(lambda x: 2*np.pi*x*(1/normalization0)*calc_prox(x,popt[0],popt[1],popt[2],popt[3],popt[5],popt[6]), 0, np.inf)
 print('norm:'+str(normalization))
+
+
+a = 1.92520559e+01
+b = 1.40697462e-04
+c = 1.66089035e+00
+alpha = -1.70504796e+01
+beta = 3.74249694e+03
+gamma = 3.50332807e+00
+
+normalization0 = 25311.230793201186
+def calc_prox(r):
+    return   (1/normalization0)*( a*np.exp(-r**2/alpha**2) + b*np.exp(-r**2/beta**2) + c*np.exp(-np.sqrt(r/gamma)) )
+normalization = integrate.quad(lambda x: 2*np.pi*x*calc_prox(x), 0, np.inf)
+print('norm:'+str(normalization))
+
+fig = plt.figure()
+plt.loglog(x,(1/normalization0)*calc_prox(x))
+plt.tight_layout(.5)
+#plt.savefig(name,dpi=300)
+#plt.savefig(name_pgf)
+#plt.close()
+plt.show()
 
 
 # def double_gauss(r,alpha,beta,eta):

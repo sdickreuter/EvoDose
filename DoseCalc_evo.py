@@ -324,14 +324,14 @@ structures = [get_single,get_dimer,get_trimer,get_hexamer,get_asymdimer,get_trip
 
 # prefixes = ["pillar_dimer"]
 # structures = [get_dimer]
-# dists = [30]
+dists = [30]
 
-dists = [20]
-for i in range(30):
-    dists.append(dists[i]+2)
+# dists = [20]
+# for i in range(30):
+#     dists.append(dists[i]+2)
 radius = [30]
-n =      [32]
-centre = [ 0]
+n =      [16]
+centre = [ 1]
 inner =  [ 0]
 
 
@@ -342,7 +342,8 @@ inner =  [ 0]
 #inner =  [ 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
 
 
-outfilename = 'pillars_r'+str(radius[0])+'nm_dose'+str(target_dose)+'_800ns.txt'
+#outfilename = 'pillars_r'+str(radius[0])+'nm_dose'+str(target_dose)+'_800ns.txt'
+outfilename = 'test.txt'
 
 
 
@@ -356,9 +357,9 @@ outfilename = 'pillars_r'+str(radius[0])+'nm_dose'+str(target_dose)+'_800ns.txt'
 # print('norm:'+str(normalization))
 # #normalization = 2.41701729505915
 
-normalization0 = 17971.512008579837
+normalization0 = 25311.230793201186
 def calc_prox(r):
-    return   ( a*np.exp(-r**2/alpha**2) + b*np.exp(-r**2/beta**2) + c*np.exp(-np.sqrt(r/gamma)) )
+    return   (1/normalization0)*( a*np.exp(-r**2/alpha**2) + b*np.exp(-r**2/beta**2) + c*np.exp(-np.sqrt(r/gamma)) )
 normalization = integrate.quad(lambda x: 2*np.pi*x*calc_prox(x), 0, np.inf)
 print('norm:'+str(normalization))
 
@@ -393,9 +394,9 @@ def recombine_arrays(arr1, arr2):
     res = np.zeros((len(arr1), 2), dtype=np.float64)
     res[:, 0] = arr1
     res[:, 1] = arr2
-    n_crossover = int(len(arr1)/3)
+    n_crossover = int(len(arr1)/2)
     for i in range(n_crossover):
-        k = np.random.randint(0, len(arr1) - 1)
+        k = np.random.randint(0, len(arr1) )
         alpha = np.random.random()
         res[k, 0] = alpha * arr1[k] + (1 - alpha) * arr2[k]
         res[k, 1] = alpha * arr2[k] + (1 - alpha) * arr1[k]
@@ -436,20 +437,42 @@ def calc_fitness(population,proximity):
 
     return fitness
 
+# @jit(float64[:,:](float64[:,:]),nopython=True)
+# def recombine_population(population):
+#     #n_recombination = 6
+#     n_recombination = int(population.shape[1]/3)
+#     #n_recombination = int(population.shape[1]/2)
+#
+#     for i in range(int(n_recombination/2)):
+#         k = 2*i
+#         l = 2*i+1
+#         r_rec = recombine_arrays(population[:, k],population[:, l])
+#         population[:, -k] = r_rec[:, 0]
+#         population[:, -l] = r_rec[:, 1]
+#
+#     return population
+
 @jit(float64[:,:](float64[:,:]),nopython=True)
 def recombine_population(population):
-    #n_recombination = 6
-    n_recombination = int(population.shape[1]/3)
-    #n_recombination = int(population.shape[1]/2)
+    new_pop = np.zeros(population.shape,dtype=np.float64)
+    n = population.shape[1]
 
-    for i in range(int(n_recombination/2)):
-        k = 2*i
-        l = 2*i+1
-        r_rec = recombine_arrays(population[:, k],population[:, l])
-        population[:, -k] = r_rec[:, 0]
-        population[:, -l] = r_rec[:, 1]
+    fit = np.arange(0,int(n/2))
 
-    return population
+    i = 0
+
+    while True:
+        mother = np.random.randint(0,len(fit))
+        father = np.random.randint(0,len(fit))
+        r_rec = recombine_arrays(population[:, mother], population[:, father])
+        new_pop[:, i] =  r_rec[:, 0]
+        new_pop[:, i+1] = r_rec[:, 1]
+        i += 2
+        if i >= n:
+             break
+
+    return new_pop
+
 
 @jit(float64[:,:](float64[:,:],float64, float64),nopython=True)
 def mutate_population(population,sigma,mutation_rate):
@@ -473,16 +496,16 @@ def check_limits(population):
     return population
 
 
-population_size = 60
+population_size = 100
 #max_iter = 200000
-max_iter = 100000
+max_iter = 500000
 #max_iter = 50000
 
-@jit()#(float64(float64[:],float64[:],float64[:],float64[:],float64[:],float64[:]))
+#@jit()#(float64(float64[:],float64[:],float64[:],float64[:],float64[:],float64[:]))
 def iterate(x0,y0,repetitions,target):
-    mutation_rate = 0.5
-    #logpoints = np.arange(500,max_iter,500)
-    logpoints = np.array([max_iter+1])
+    mutation_rate = 0.3
+    logpoints = np.arange(500,max_iter,500)
+    #logpoints = np.array([max_iter+1])
     checkpoints = np.arange(50,max_iter,50)
 
     population = np.zeros((len(x0),population_size),dtype=np.float64)
@@ -511,13 +534,15 @@ def iterate(x0,y0,repetitions,target):
 
     #print("Starting Iteration")
     sigma = 1
+    std_err = 0.0
+    slope = 0.0
     starttime = time.time()
     for i in range(max_iter):
         fitness = calc_fitness(population, proximity)
         sorted_ind = np.argsort(fitness)
         #sorted_ind = argsort1D(fitness)
 
-        if 100*fitness[sorted_ind][0]/target_dose < 0.01:#0.01:
+        if 100*fitness[sorted_ind][0]/target_dose < 0.001:#0.01:
             break
 
         if i < 2000:
@@ -526,31 +551,29 @@ def iterate(x0,y0,repetitions,target):
             sigma = 1#0.5
         else:
             if i in checkpoints:
-                indices = np.arange(i-500,i,step=1)
-                slope, intercept, r_value, p_value, std_err = linregress(t[indices],convergence[indices])
-                #print(std_err)
-                #if slope > 0.01:
-                #    sigma -= 0.01
-                #if (std_err > 0.0003) or (slope > 0):
-                #if (std_err > 0.005) or (slope > 0):
-                if (std_err > 0.1) or (slope > 0):
-                    sigma *= 0.98
+                indices = np.arange(i - 50, i, step=1)
+                slope, intercept, r_value, p_value, std_err = linregress(indices, convergence[indices])
+                std_err = np.abs((np.std(convergence[indices]) * 100))/ np.mean(convergence[indices])
+                #slope = slope / np.mean(convergence[indices])
 
-                if (std_err < 0.0001) and (slope > 0):
-                    sigma *= 1.02
+                if i in checkpoints:
 
-                #if sigma < 0.001:
-                #    sigma = 0.001
-                # if i == int(max_iter / 2):
-                #     mutation_rate = 0.1
+                    # if (std_err > 0.1) or (slope > 0):
+                    # if (slope > 0):
+                    if ((std_err > 0.1) and (slope < -1)) or (std_err > 0.05 and slope > -0.1):
+                        #if sigma > 10:
+                            sigma *= 0.995
 
+                    if (std_err < 0.1) and (slope > 0) and (sigma < 1 / 2):
+                        sigma *= 1.01
+                        # sigma += sigma_start/20
 
         population = population[:,sorted_ind]
         population = recombine_population(population)
         population = mutate_population(population,sigma,mutation_rate)
         population = check_limits(population)
         if i in logpoints:
-            print("{0:7d}: fitness: {1:1.5f}%, sigma: {2:1.5f}".format(i, 100*fitness[sorted_ind][0]/target_dose, sigma))
+            print("{0:7d}: fitness: {1:2.6f}, sigma: {2:5.5f}, std_err: {3:5.5f}, slope: {4:5.5f}".format(i, fitness[0], sigma,std_err,slope))
         convergence[i] = fitness[sorted_ind][0]
         t[i] = time.time() - starttime
 
