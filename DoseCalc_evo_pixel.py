@@ -32,7 +32,7 @@ eta = 0.92
 current = 100 * 1e-12 # A
 dwell_time = 800 * 1e-9#200 * 1e-9 # s
 target_dose = 600#70 # uC/cm^2
-nmperpixel = 10 # nm
+nmperpixel = 5 # nm
 
 def put_circle(x0,y0,r,exposure_indices=None):
     r = int(r/nmperpixel) # pixel
@@ -89,7 +89,7 @@ def convolve_with_vector(field,exposure,v,h):
         for j in range(field.shape[1]):
             if buf[i,j] < 0:
                 for k in range(h.shape[0]):
-                    fj = j+k-int((h.shape[0]-1)/2)
+                    fj = j+k-int((h.shape[0])/2)
                     if fj >= 0 and fj < field.shape[1]:
                         exposure[i,fj] += buf[i,j]*h[k]
 
@@ -217,7 +217,7 @@ def calc_fitness(population, exposure_indices, target, v_alpha, h_alpha, v_beta,
         for i in prange(target.shape[0]):
             for j in range(target.shape[1]):
                 if target[i,j] > 0:
-                    buf += np.abs(exposure[i,j]-target[i,j])
+                    buf += np.abs(exposure[i,j]-target[i,j])**2
         fitness[p] = fitness[p] + buf
         #fitness[p] += np.sum(population[:,p]>np.var(population[:,p]))#/exposure_indices.shape[0]
         # buf = 0
@@ -275,9 +275,9 @@ def mutate_population(population,sigma,mutation_rate):
 
     for i in range(population.shape[1]):
         #if i < int(population.shape[1]/3):
-        if i < 2:
+        if i < 5:
             population[:, i] = mutate(population[:, i], sigma/10, mutation_rate)#
-        elif i < 4:
+        elif i < 10:
             population[:, i] = mutate(population[:, i], sigma/2, mutation_rate)#
         else:
             population[:, i] = mutate(population[:, i], sigma, mutation_rate)  #
@@ -306,8 +306,8 @@ def smooth_doses(target,population,exposure_indices):
 
     return population
 
-population_size = 150
-max_iter = 3000
+population_size = 200
+max_iter = 2000
 
 #@jit(float32(float32[:],float32[:],float32[:],float32[:],float32[:],float32[:]))
 @jit()
@@ -330,24 +330,38 @@ def iterate(exposure_indices,target, v_alpha, h_alpha, v_beta, h_beta):
     convergence = np.zeros(max_iter)
     t = np.zeros(max_iter)
     variance = 0
+    std_err = 0.0
+    slope = 0.0
 
     i=0
     j=0
-    start = np.linspace(5000, 200000, num=population_size, dtype=np.float32) # for 5nmperpixel
+    start = np.linspace(100000, 200000, num=population_size, dtype=np.float32) # for 5nmperpixel
     #start = np.linspace(10000, 20000, num=population_size, dtype=np.float32) # for 5nmperpixel
     #start = np.linspace(10000,15000,num=population_size, dtype=np.float32) # for 3 nmperpixel
     for i in range(population_size):
         population[:, i] = np.repeat(start[i],population.shape[0])
         for j in range(population.shape[0]):
-            population[j, i] = np.random.randint(-start.max()/50,start.max()/50)
+            population[j, i] = np.random.randint(-start.max()/100,start.max()/100)
     population = check_limits(population)
-    sigma_start = start.max()/5
+    sigma_start = start.max()/6
     sigma = sigma_start
     starttime = time.time()
     for i in range(max_iter):
 
+        if i == 300:
+            mutation_rate = 0.75
+            #sigma *= 2
         if i == 500:
             mutation_rate = 0.5
+            #sigma *= 2
+        if i == 1000:
+            mutation_rate = 0.3
+            #sigma *= 2
+        if i == 1500:
+            mutation_rate = 0.1
+            #sigma *= 2
+        #if i == 3000:
+        #    mutation_rate = 0.01
         #     population = smooth_doses(target,population,exposure_indices)
         # if i == 10:
         #     mutation_rate = 0.75
@@ -367,27 +381,24 @@ def iterate(exposure_indices,target, v_alpha, h_alpha, v_beta, h_beta):
         #elif i < 100:
         #    sigma = sigma_start/2 # 0.5
         #else:
-        std_err = 0.0
-        slope = 0.0
+
         if i > 11:
 
 
             indices = np.arange(i-10,i,step=1)
             slope, intercept, r_value, p_value, std_err = linregress(indices,convergence[indices])
             std_err = np.abs((np.std(convergence[indices])*100)/intercept)
-            variance = np.var(fitness)
+            variance = np.var(fitness)/np.mean(fitness)
             if i in checkpoints:
 
-                #if (std_err > 0.1) or (slope > 0):
-                #if (slope > 0):
-                if i > 100:
-                    if ((std_err > 5) and (slope < -5)) or (std_err > 1.0 and slope > -0.1):
-                        if sigma > 10:
-                            sigma *= 0.98
+                if slope > -0.1 and variance > 10:
+                    if sigma > 1:
+                        sigma *= 0.95
 
-                if (std_err < 0.1) and (slope > 0) and (sigma < sigma_start/2):
-                    sigma *= 1.02
-                    #sigma += sigma_start/20
+
+                if slope > -0.1 and variance < 1:
+                    if sigma < sigma_start/2:
+                        sigma *= 1.05
 
             if i > 1000 and len(fitness) > population_size/2:
                 if np.random.random() < 0.5:
@@ -401,15 +412,15 @@ def iterate(exposure_indices,target, v_alpha, h_alpha, v_beta, h_beta):
             #    if np.random.random() < 0.5:
             #        population = population[:, :-1]
 
-            if i > 2000 and len(fitness) > population_size/3:
-                if np.random.random() < 0.5:
-                    population = population[:, :-1]
+            #if i > 2000 and len(fitness) > population_size/3:
+            #    if np.random.random() < 0.5:
+            #        population = population[:, :-1]
 
             # if i in [5000]:#i == 1000 or i == 5000:
             #     population = smooth_doses(target,population,exposure_indices)
 
 
-            if doplot and not i%20:
+            if doplot and not i%100:
                 set_doses_field(field, exposure_indices, population[:,0])
                 field[field==0] = np.nan
                 plt.imshow(field)
@@ -417,11 +428,13 @@ def iterate(exposure_indices,target, v_alpha, h_alpha, v_beta, h_beta):
                 plt.savefig('current.png',dpi=300)
                 plt.close()
 
+
         population = recombine_population(population)
         population = mutate_population(population,sigma,mutation_rate)
         population = check_limits(population)
+
         if i in logpoints:
-            print("{0:7d}: fitness: {1:5.1f}, sigma: {2:5.5f}, std_err: {3:5.5f}, slope: {4:5.5f}, var: {5:5.5f}".format(i, fitness[0], sigma,std_err,slope,variance))
+            print("{0:7d}: fitness: {1:5.1f}, sigma: {2:5.5f}, std_err: {3:5.5f}, slope: {4:5.5f}, var: {5:5.5f}".format(i, np.sqrt(fitness[0]), sigma,std_err,slope,variance))
         convergence[i] = fitness[0]
         t[i] = time.time() - starttime
 
@@ -489,7 +502,7 @@ def make_grid(size,dist):
 
 
 r = 60
-dist = r+60
+dist = r+70
 # x,y = make_grid(1,dist)
 # x += 500
 # y += 500
