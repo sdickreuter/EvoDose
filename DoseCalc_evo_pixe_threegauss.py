@@ -349,7 +349,7 @@ def reinit_population(population):
     new_pop = np.zeros(population.shape,dtype=np.float32)
     mother = population[:,0]
     new_pop[:, 0] = mother
-    sigma = np.mean(mother)/5
+    sigma = np.mean(mother)/10
     i = 1
     while True:
         new_pop[:, i] = mother + (np.random.random(population.shape[0])-0.5)*sigma
