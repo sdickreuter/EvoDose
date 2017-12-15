@@ -5,7 +5,7 @@ from plotsettings import *
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from numba import jit,float64,int64
+from numba import jit,float32,int32, njit, prange
 
 import math
 
@@ -282,9 +282,9 @@ def get_triple90(dist,r,n, inner_circle=False, centre_dot = False,dose_check_rad
 #     y = y - np.min(y) + 500
 #     return x,y
 
-current = 100 * 1e-12 # A
-dwell_time = 800 * 1e-9#200 * 1e-9 # s
-dose_check_radius = 3 # nm
+current = np.float32(100 * 1e-12) # A
+dwell_time = np.float32(800 * 1e-9) #200 * 1e-9 # s
+dose_check_radius = 5 # nm
 target_dose = 600#70 # uC/cm^2
 
 
@@ -330,8 +330,8 @@ dists = [30]
 # for i in range(30):
 #     dists.append(dists[i]+2)
 radius = [30]
-n =      [16]
-centre = [ 1]
+n =      [32]
+centre = [ 0]
 inner =  [ 0]
 
 
@@ -349,7 +349,7 @@ outfilename = 'test.txt'
 
 # normalization = 1
 # #http://iopscience.iop.org/article/10.1143/JJAP.35.1929/pdf
-# @jit(float64(float64),nopython=True)
+# @jit(float32(float32),nopython=True)
 # def calc_prox(r):
 #     return (1/normalization) * (1/(math.pi*(1+eta_1+eta_2))) * ( (1/(alpha**2))*math.exp(-r**2/alpha**2) + (eta_1/beta**2)*math.exp(-r**2/beta**2) + (eta_2/(24*gamma**2))*math.exp(-math.sqrt(r/gamma)) )
 # # [return] = C/nm !!!
@@ -365,15 +365,15 @@ print('norm:'+str(normalization))
 
 
 
-@jit(float64(float64,float64,float64,float64),nopython=True)
+@jit(float32(float32,float32,float32,float32),nopython=True)
 def dist(x0,y0,x,y):
     return math.sqrt( (x0-x)*(x0-x)+(y0-y)*(y0-y) )
 
 
-#@jit(float64[:](float64[:],float64[:],float64[:],float64[:],float64[:]),nopython=True)
+#@jit(float32[:](float32[:],float32[:],float32[:],float32[:],float32[:]),nopython=True)
 @jit
 def calc_map_2(x0,y0,doses,x,y):
-    exposure = np.zeros(len(x),dtype=np.float64)
+    exposure = np.zeros(len(x),dtype=np.float32)
     pixel_area = np.abs(x[0] - x[1]) * np.abs(x[0] - x[1])  # nm^2
     for i in range(len(x)):
         for j in range(len(x0)):
@@ -381,53 +381,77 @@ def calc_map_2(x0,y0,doses,x,y):
             exposure[i] += calc_prox(r)*doses[j]* pixel_area
     return exposure
 
-@jit(float64[:](float64[:,:],float64[:]),nopython=True)
+@njit(float32[:](float32[:,:],float32[:]),parallel=False)
 def calc_map(proximity,doses):
-    exposure = np.zeros(proximity.shape[1],dtype=np.float64)
+    exposure = np.zeros(proximity.shape[1],dtype=np.float32)
     for i in range(proximity.shape[1]):
         for j in range(proximity.shape[0]):
             exposure[i] += proximity[j,i]*doses[j]
     return exposure
 
-@jit(float64[:, :](float64[:], float64[:]),nopython=True)
+@jit(float32[:, :](float32[:], float32[:]),nopython=True)
 def recombine_arrays(arr1, arr2):
-    res = np.zeros((len(arr1), 2), dtype=np.float64)
+    res = np.zeros((len(arr1), 2), dtype=np.float32)
     res[:, 0] = arr1
     res[:, 1] = arr2
     n_crossover = int(len(arr1)/2)
     for i in range(n_crossover):
         k = np.random.randint(0, len(arr1) )
         alpha = np.random.random()
+        #alpha = 0
         res[k, 0] = alpha * arr1[k] + (1 - alpha) * arr2[k]
         res[k, 1] = alpha * arr2[k] + (1 - alpha) * arr1[k]
     return res
 
-@jit(float64[:](float64[:],float64, float64),nopython=True)
+# @jit(float32[:](float32[:],float32, float32),nopython=True)
+# def mutate(arr,sigma,mutation_rate):
+#     for i in range(arr.shape[0]):
+#         if np.random.random() < mutation_rate:
+#             mutation = np.random.normal()*sigma
+#             if mutation > sigma*1.0:
+#                 mutation = sigma
+#             if mutation < -sigma*1.0:
+#                 mutation = -sigma
+#             arr[i] = arr[i] + mutation
+#     return arr
+
+@njit(float32[:](float32[:],float32, float32),parallel=True)
 def mutate(arr,sigma,mutation_rate):
-    for i in range(arr.shape[0]):
+    for i in prange(arr.shape[0]):
         if np.random.random() < mutation_rate:
-            mutation = np.random.normal()*sigma
-            if mutation > sigma*1.0:
-                mutation = sigma
-            if mutation < -sigma*1.0:
-                mutation = -sigma
+            mutation = (np.random.random()-0.5) * sigma
             arr[i] = arr[i] + mutation
     return arr
 
+@jit(float32[:,:](float32[:,:]),nopython=True)
+def reinit_population(population):
+    n = population.shape[1]
+    new_pop = np.zeros(population.shape,dtype=np.float32)
+    mother = population[:,0]
+    new_pop[:, 0] = mother
+    sigma = np.mean(mother)*0.01
+    i = 1
+    while True:
+        new_pop[:, i] = mother + (np.random.random(population.shape[0])-0.5)*sigma
+        i += 1
+        if i >= n:
+             break
 
-@jit(float64[:](float64[:,:],float64[:,:]),nopython=True)
+    return new_pop
+
+@njit(float32[:](float32[:,:],float32[:,:]),parallel=False)
 def calc_fitness(population,proximity):
-    fitness = np.zeros(population.shape[1],dtype=np.float64)
-    exposure = np.zeros(population.shape[1],dtype=np.float64)
-    pixel_area =  1 #nm^2 #pixel_area * 1e-14  # cm^2
-    #repetitions = np.zeros(population.shape[0],dtype=np.float64)
+    fitness = np.zeros(population.shape[1],dtype=np.float32)
+    exposure = np.zeros(population.shape[1],dtype=np.float32)
+    pixel_area =  np.float32(1) #nm^2 #pixel_area * 1e-14  # cm^2
+    #repetitions = np.zeros(population.shape[0],dtype=np.float32)
 
     for p in range(population.shape[1]):
         #for i in range(population.shape[0]):
         #    repetitions[i] = round(population[i,p])
         exposure = calc_map(proximity[:,:],population[:, p] * current * dwell_time)
             #exposure = calc_map(proximity[:, j, :], repetitions * current * dwell_time)
-        exposure = (exposure* 1e6)/(pixel_area*1e-14 ) # uC/cm^2
+        exposure = (exposure* np.float32(1e6))/(pixel_area*np.float32(1e-14) ) # uC/cm^2
         #sum = 0.0
         #for i in range(exposure.shape[0]):
         #    sum += math.fabs(target_dose-exposure[i])
@@ -437,7 +461,7 @@ def calc_fitness(population,proximity):
 
     return fitness
 
-# @jit(float64[:,:](float64[:,:]),nopython=True)
+# @jit(float32[:,:](float32[:,:]),nopython=True)
 # def recombine_population(population):
 #     #n_recombination = 6
 #     n_recombination = int(population.shape[1]/3)
@@ -452,18 +476,46 @@ def calc_fitness(population,proximity):
 #
 #     return population
 
-@jit(float64[:,:](float64[:,:]),nopython=True)
-def recombine_population(population):
-    new_pop = np.zeros(population.shape,dtype=np.float64)
-    n = population.shape[1]
+# @jit(float32[:,:](float32[:,:]),nopython=True)
+# def recombine_population(population):
+#     new_pop = np.zeros(population.shape,dtype=np.float32)
+#     n = population.shape[1]
+#
+#     fit = np.arange(0,int(n/2))
+#
+#     i = 0
+#
+#     while True:
+#         mother = np.random.randint(0,len(fit))
+#         father = np.random.randint(0,len(fit))
+#         r_rec = recombine_arrays(population[:, mother], population[:, father])
+#         new_pop[:, i] =  r_rec[:, 0]
+#         new_pop[:, i+1] = r_rec[:, 1]
+#         i += 2
+#         if i >= n:
+#              break
+#
+#     return new_pop
 
-    fit = np.arange(0,int(n/2))
-
+@jit(int32(float32[:]),nopython=True)
+def weighted_choice(weights):
     i = 0
+    rnd = np.random.random() * np.sum(weights)
+    for i in range(len(weights)):
+        rnd -= weights[i]
+        if rnd < 0:
+            break
+    return i
 
+@jit(float32[:,:](float32[:,:],float32[:]),nopython=True)
+def recombine_population(population,fitness):
+    weights =  fitness.max()-fitness
+    new_pop = np.zeros(population.shape,dtype=np.float32)
+    n = population.shape[1]
+    i = 0
     while True:
-        mother = np.random.randint(0,len(fit))
-        father = np.random.randint(0,len(fit))
+        father = weighted_choice(weights)
+        mother = weighted_choice(weights)
         r_rec = recombine_arrays(population[:, mother], population[:, father])
         new_pop[:, i] =  r_rec[:, 0]
         new_pop[:, i+1] = r_rec[:, 1]
@@ -473,21 +525,27 @@ def recombine_population(population):
 
     return new_pop
 
+# @jit(float32[:,:](float32[:,:],float32, float32),nopython=True)
+# def mutate_population(population,sigma,mutation_rate):
+#
+#     for i in range(population.shape[1]):
+#         #if i < int(population.shape[1]/3):
+#         if i < 2:
+#             population[:, i] = mutate(population[:, i], sigma/10, mutation_rate)#
+#         elif i < 6:
+#             population[:, i] = mutate(population[:, i], sigma/2, mutation_rate)#
+#         else:
+#             population[:, i] = mutate(population[:, i], sigma, mutation_rate)  #
+#     return population
 
-@jit(float64[:,:](float64[:,:],float64, float64),nopython=True)
+@njit(float32[:,:](float32[:,:],float32, float32),parallel=True)
 def mutate_population(population,sigma,mutation_rate):
+    for i in range(int(population.shape[1]/2)):
+        mutate(population[:, np.random.randint(0, population.shape[1])], sigma, mutation_rate)
 
-    for i in range(population.shape[1]):
-        #if i < int(population.shape[1]/3):
-        if i < 2:
-            population[:, i] = mutate(population[:, i], sigma/10, mutation_rate)#
-        elif i < 6:
-            population[:, i] = mutate(population[:, i], sigma/2, mutation_rate)#
-        else:
-            population[:, i] = mutate(population[:, i], sigma, mutation_rate)  #
     return population
 
-@jit(float64[:,:](float64[:,:]),nopython=True)
+@jit(float32[:,:](float32[:,:]),nopython=True)
 def check_limits(population):
     for i in range(population.shape[1]):
         for j in range(population.shape[0]):
@@ -501,19 +559,19 @@ population_size = 100
 max_iter = 500000
 #max_iter = 50000
 
-#@jit()#(float64(float64[:],float64[:],float64[:],float64[:],float64[:],float64[:]))
+#@jit()#(float32(float32[:],float32[:],float32[:],float32[:],float32[:],float32[:]))
 def iterate(x0,y0,repetitions,target):
     mutation_rate = 0.3
     logpoints = np.arange(500,max_iter,500)
     #logpoints = np.array([max_iter+1])
     checkpoints = np.arange(50,max_iter,50)
 
-    population = np.zeros((len(x0),population_size),dtype=np.float64)
-    fitness = np.zeros(population_size,dtype=np.float64)
+    population = np.zeros((len(x0),population_size),dtype=np.float32)
+    fitness = np.zeros(population_size,dtype=np.float32)
     pixel_area =  1 #nm^2 #pixel_area * 1e-14  # cm^2
 
 
-    proximity = np.zeros((population.shape[0],target.shape[0]),dtype=np.float64)
+    proximity = np.zeros((population.shape[0],target.shape[0]),dtype=np.float32)
     convergence = np.zeros(max_iter)
     t = np.zeros(max_iter)
 
@@ -541,8 +599,12 @@ def iterate(x0,y0,repetitions,target):
         fitness = calc_fitness(population, proximity)
         sorted_ind = np.argsort(fitness)
         #sorted_ind = argsort1D(fitness)
+        fitness = fitness[sorted_ind]
+        population = population[:,sorted_ind]
 
-        if 100*fitness[sorted_ind][0]/target_dose < 0.001:#0.01:
+        #sigma = fitness[0]/5
+
+        if 100*fitness[0]/target_dose < 0.001:#0.01:
             break
 
         if i < 2000:
@@ -568,13 +630,16 @@ def iterate(x0,y0,repetitions,target):
                         sigma *= 1.01
                         # sigma += sigma_start/20
 
-        population = population[:,sorted_ind]
-        population = recombine_population(population)
+                # if not i % 10000 and i > 10000:
+                #     population = reinit_population(population)
+                #     # sigma = np.mean(population[:,0]) / 10
+
+        population = recombine_population(population,fitness)
         population = mutate_population(population,sigma,mutation_rate)
         population = check_limits(population)
         if i in logpoints:
             print("{0:7d}: fitness: {1:2.6f}, sigma: {2:5.5f}, std_err: {3:5.5f}, slope: {4:5.5f}".format(i, fitness[0], sigma,std_err,slope))
-        convergence[i] = fitness[sorted_ind][0]
+        convergence[i] = fitness[0]
         t[i] = time.time() - starttime
 
     print("Done -> Mean Error: {0:1.5f}%, sigma: {1:1.5f}".format(convergence[:i][-1] , sigma))
@@ -635,9 +700,9 @@ for r in range(len(radius)):
             #plt.show()
             #plt.close()
 
-            repetitions = np.ones(len(x0),dtype=np.float64)*300
+            repetitions = np.ones(len(x0),dtype=np.float32)*300
 
-            target = np.zeros((len(cx),2),dtype=np.float64)
+            target = np.zeros((len(cx),2),dtype=np.float32)
             target[:,0] = cx
             target[:,1] = cy
 

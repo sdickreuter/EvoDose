@@ -25,9 +25,12 @@ try:
 except:
    import pickle
 
-alpha = 14*2 # nm
-beta = 2810 # nm
-eta = 0.92
+a = 1.92520559e+01
+b = 1.40697462e-04
+c = 1.66089035e+00
+alpha = -1.70504796e+01
+beta = 3.74249694e+03
+gamma = 3.50332807e+00
 
 current = 100 * 1e-12 # A
 dwell_time = 800 * 1e-9#200 * 1e-9 # s
@@ -93,40 +96,61 @@ def convolve_with_vector(field,exposure,v,h):
                     if fj >= 0 and fj < field.shape[1]:
                         exposure[i,fj] += buf[i,j]*h[k]
 
-@jit(float32[:,:](float32[:,:],float32[:],float32[:],float32[:],float32[:]),nopython=True)
-def calc_exposure(field,v_alpha,h_alpha,v_beta,h_beta):
+@jit(float32[:,:](float32[:,:],float32[:],float32[:],float32[:],float32[:],float32[:],float32[:]),nopython=True)
+def calc_exposure(field,v_alpha,h_alpha,v_beta,h_beta, v_gamma, h_gamma):
     exposure = np.zeros(field.shape,dtype=np.float32)
     convolve_with_vector(field, exposure, v_alpha, h_alpha)
     convolve_with_vector(field, exposure, v_beta, h_beta)
+    convolve_with_vector(field, exposure, v_gamma, h_gamma)
     return exposure
 
-@jit(float32(float32,float32), nopython=True)
-def calc_gauß_alpha(r,alpha):
-    # return 1/(np.pi*(1+eta)) * (1/alpha**2)*math.exp(-r ** 2 / alpha ** 2)
-    return (1 / alpha ** 2) * math.exp(-r ** 2 / alpha ** 2)
+normalization0 = 25311.230793201186
+def calc_prox(r):
+    return   (1/normalization0)*( a*np.exp(-r**2/alpha**2) + b*np.exp(-r**2/beta**2) + c*np.exp(-np.sqrt(r/gamma)) )
+normalization = integrate.quad(lambda x: 2*np.pi*x*calc_prox(x), 0, np.inf)
+print('norm:'+str(normalization))
 
 @jit(float32(float32,float32,float32), nopython=True)
-def calc_gauß_beta(r,beta,eta):
-    return 1 / (np.pi * (1 + eta)) * (eta / beta) * math.exp(-r ** 2 * eta / alpha ** 2)
+def calc_gauß_alpha(r,a,alpha):
+    # return 1/(np.pi*(1+eta)) * (1/alpha**2)*math.exp(-r ** 2 / alpha ** 2)
+    return (1/normalization0) * a * math.exp(-r ** 2 / alpha ** 2)
 
-@jit(float32[:](float32[:], float32[:], float32[:], float32[:], float32), nopython=True)
-def calc_map_alpha(x0, y0, x, y, alpha):
+@jit(float32(float32,float32,float32), nopython=True)
+def calc_gauß_beta(r,b,beta):
+    return (1/normalization0) * b * math.exp(-r ** 2 / beta ** 2)
+
+@jit(float32(float32,float32,float32), nopython=True)
+def calc_gauß_gamma(r,c,gamma):
+    return (1/normalization0) * c * math.exp(-r ** 2 / gamma ** 2)
+
+
+@jit(float32[:](float32[:], float32[:], float32[:], float32[:], float32, float32), nopython=True)
+def calc_map_alpha(x0, y0, x, y, a, alpha):
     gauss = np.zeros(len(x), dtype=np.float32)
     for i in range(len(x)):
         for j in range(len(x0)):
-            gauss[i] += calc_gauß_alpha(dist(x0[j], y0[j], x[i], y[i]),alpha)
+            gauss[i] += calc_gauß_alpha(dist(x0[j], y0[j], x[i], y[i]),a,alpha)
     return gauss
 
 @jit(float32[:](float32[:], float32[:], float32[:], float32[:], float32, float32), nopython=True)
-def calc_map_beta(x0, y0, x, y, beta, eta):
+def calc_map_beta(x0, y0, x, y, b, beta):
     gauss = np.zeros(len(x), dtype=np.float32)
     for i in range(len(x)):
         for j in range(len(x0)):
-            gauss[i] += calc_gauß_beta(dist(x0[j], y0[j], x[i], y[i]), beta, eta)
+            gauss[i] += calc_gauß_beta(dist(x0[j], y0[j], x[i], y[i]), b, beta)
     return gauss
 
+@jit(float32[:](float32[:], float32[:], float32[:], float32[:], float32, float32), nopython=True)
+def calc_map_gamma(x0, y0, x, y, c, gamma):
+    gauss = np.zeros(len(x), dtype=np.float32)
+    for i in range(len(x)):
+        for j in range(len(x0)):
+            gauss[i] += calc_gauß_gamma(dist(x0[j], y0[j], x[i], y[i]), c, gamma)
+    return gauss
+
+
 #@jit()
-def generate_hv_vectors(alpha,beta,eta):
+def generate_hv_vectors(a,b,c,alpha,beta,eta):
     #width = 5000 # nm
     #width = 2000  # nm
     width = 150  # nm
@@ -138,13 +162,16 @@ def generate_hv_vectors(alpha,beta,eta):
 
     x_psf, y_psf = np.meshgrid(x_psf, y_psf)
 
-    gauß_alpha = calc_map_alpha(np.array([0.0],dtype=np.float32),np.array([0.0],dtype=np.float32),x_psf.ravel(),y_psf.ravel(),alpha)
+    gauß_alpha = calc_map_alpha(np.array([0.0],dtype=np.float32),np.array([0.0],dtype=np.float32),x_psf.ravel(),y_psf.ravel(),a,alpha)
     gauß_alpha = gauß_alpha.reshape(x_psf.shape)
-    gauß_beta = calc_map_beta(np.array([0.0],dtype=np.float32),np.array([0.0],dtype=np.float32),x_psf.ravel(),y_psf.ravel(),beta,eta)
+    gauß_beta = calc_map_beta(np.array([0.0],dtype=np.float32),np.array([0.0],dtype=np.float32),x_psf.ravel(),y_psf.ravel(),b,beta)
     gauß_beta = gauß_beta.reshape(x_psf.shape)
+    gauß_gamma = calc_map_gamma(np.array([0.0],dtype=np.float32),np.array([0.0],dtype=np.float32),x_psf.ravel(),y_psf.ravel(),c,gamma)
+    gauß_gamma = gauß_gamma.reshape(x_psf.shape)
 
     U_alpha, S_alpha, V_alpha = np.linalg.svd(gauß_alpha, full_matrices=True)
     U_beta, S_beta, V_beta = np.linalg.svd(gauß_beta, full_matrices=True)
+    U_gamma, S_gamma, V_gamma = np.linalg.svd(gauß_gamma, full_matrices=True)
 
     v_alpha = U_alpha[:,0] * np.sqrt(S_alpha[0])
     v_alpha = np.reshape(v_alpha,(v_alpha.shape[0],1))
@@ -156,7 +183,12 @@ def generate_hv_vectors(alpha,beta,eta):
     h_beta = V_beta[0,:] * np.sqrt(S_beta[0])
     h_beta = np.reshape(h_beta,(1,h_beta.shape[0]))
 
-    return np.array(v_alpha.ravel(),dtype=np.float32), np.array(h_alpha.ravel(),dtype=np.float32), np.array(v_beta.ravel(),dtype=np.float32), np.array(h_beta.ravel(),dtype=np.float32)
+    v_gamma = U_gamma[:,0] * np.sqrt(S_gamma[0])
+    v_gamma = np.reshape(v_gamma,(v_gamma.shape[0],1))
+    h_gamma = V_gamma[0,:] * np.sqrt(S_gamma[0])
+    h_gamma = np.reshape(h_gamma,(1,h_gamma.shape[0]))
+
+    return np.array(v_alpha.ravel(),dtype=np.float32), np.array(h_alpha.ravel(),dtype=np.float32), np.array(v_beta.ravel(),dtype=np.float32), np.array(h_beta.ravel(),dtype=np.float32), np.array(v_gamma.ravel(),dtype=np.float32), np.array(h_gamma.ravel(),dtype=np.float32)
 
 def generate_empty_field_matrix(width):
     size = int(np.round(width/nmperpixel))
@@ -207,15 +239,15 @@ def mutate(arr,sigma,mutation_rate):
     return arr
 
 
-@njit(float32[:](float32[:,:],int32[:,:],float32[:,:],float32[:],float32[:],float32[:],float32[:]))#,parallel=True)
-def calc_fitness(population, exposure_indices, target, v_alpha, h_alpha, v_beta, h_beta):
+@njit(float32[:](float32[:,:],int32[:,:],float32[:,:],float32[:],float32[:],float32[:],float32[:],float32[:],float32[:]))#,parallel=True)
+def calc_fitness(population, exposure_indices, target, v_alpha, h_alpha, v_beta, h_beta, v_gamma, h_gamma):
     fitness = np.zeros(population.shape[1],dtype=np.float32)
     exposure = np.zeros(target.shape,dtype=np.float32)
     field = np.zeros(target.shape, dtype=np.float32)
     for p in range(population.shape[1]):
         field *= 0
         set_doses_field(field, exposure_indices, population[:, p])
-        exposure = calc_exposure(field, v_alpha, h_alpha, v_beta, h_beta)
+        exposure = calc_exposure(field, v_alpha, h_alpha, v_beta, h_beta, v_gamma, h_gamma)
         #fitness[p] = np.sum(np.abs(np.subtract(target,exposure)))#/exposure_indices.shape[0]
         buf = 0
         for i in prange(target.shape[0]):
@@ -367,11 +399,11 @@ def smooth_doses(target,population,exposure_indices):
     return population
 
 population_size = 50#300
-max_iter = 1000000
+max_iter = 100000
 
 #@jit(float32(float32[:],float32[:],float32[:],float32[:],float32[:],float32[:]))
 @jit()
-def iterate(exposure_indices,target, v_alpha, h_alpha, v_beta, h_beta):
+def iterate(exposure_indices,target, v_alpha, h_alpha, v_beta, h_beta, v_gamma, h_gamma):
     doplot = True
 
     if doplot:
@@ -431,7 +463,7 @@ def iterate(exposure_indices,target, v_alpha, h_alpha, v_beta, h_beta):
 
 
         #def calc_fitness(population, exposure_indices, target, v_alpha, h_alpha, v_beta, h_beta):
-        fitness = calc_fitness(population, exposure_indices, target, v_alpha, h_alpha, v_beta, h_beta)
+        fitness = calc_fitness(population, exposure_indices, target, v_alpha, h_alpha, v_beta, h_beta, v_gamma, h_gamma)
         sorted_ind = np.argsort(fitness)
         fitness = fitness[sorted_ind]
         population = population[:,sorted_ind]
@@ -496,7 +528,7 @@ def iterate(exposure_indices,target, v_alpha, h_alpha, v_beta, h_beta):
                 #field[field==0] = np.nan
                 plt.imshow(field)
                 plt.colorbar()
-                plt.savefig('current.png',dpi=300)
+                plt.savefig('pics_threegauss/current.png',dpi=300)
                 plt.close()
 
 
@@ -518,18 +550,21 @@ def iterate(exposure_indices,target, v_alpha, h_alpha, v_beta, h_beta):
 
 alpha_p = None
 beta_p = None
-eta_p = None
+gamma_p = None
+a_p = None
+b_p = None
+c_p = None
 nmperpixel_p = None
 try:
-    with open('hv_vectors.obj', 'rb') as fp:
-        alpha_p, beta_p, eta_p, nmperpixel_p, v_alpha, h_alpha, v_beta, h_beta = pickle.load(fp)
+    with open('hv_vectors_threegauss.obj', 'rb') as fp:
+        a_p, b_p, c_p, alpha_p, beta_p, gamma_p, nmperpixel_p, v_alpha, h_alpha, v_beta, h_beta, v_gamma, h_gamma = pickle.load(fp)
 except:
     print('Error loading hv_vectors from file, generating h and v vectors')
 
-if (alpha_p != alpha) or (beta_p != beta) or (eta_p != eta) or (nmperpixel_p != nmperpixel):
-    v_alpha, h_alpha, v_beta, h_beta = generate_hv_vectors(alpha,beta,eta)
-    with open('hv_vectors.obj', 'wb') as fp:
-        pickle.dump((alpha, beta, eta, nmperpixel, v_alpha, h_alpha, v_beta, h_beta), fp)
+if (alpha_p != alpha) or (beta_p != beta) or (gamma_p != gamma) or (a_p != a) or (b_p != b) or (c_p != c) or (nmperpixel_p != nmperpixel):
+    v_alpha, h_alpha, v_beta, h_beta, v_gamma, h_gamma = generate_hv_vectors(a,b,c,alpha,beta,gamma)
+    with open('hv_vectors_threegauss.obj', 'wb') as fp:
+        pickle.dump((a,b,c,alpha, beta, gamma, nmperpixel, v_alpha, h_alpha, v_beta, h_beta, v_gamma, h_gamma), fp)
 
 
 
@@ -604,7 +639,7 @@ plt.show()
 doses = np.linspace(90000,100000,exposure_indices.shape[0],dtype=np.float32)
 field = generate_empty_field_matrix(400)
 set_doses_field(field,exposure_indices,doses)
-exposure = calc_exposure(field,v_alpha,h_alpha,v_beta,h_beta)
+exposure = calc_exposure(field,v_alpha,h_alpha,v_beta,h_beta, v_gamma, h_gamma)
 print(np.sum(exposure-target))
 plt.imshow(target-exposure)
 plt.show()
@@ -614,7 +649,7 @@ plt.show()
 #def iterate(x0,y0,repetitions,target):
 
 print("Starting Iteration")
-doses, t, convergence = iterate(exposure_indices,target, v_alpha, h_alpha, v_beta, h_beta)
+doses, t, convergence = iterate(exposure_indices,target, v_alpha, h_alpha, v_beta, h_beta, v_gamma, h_gamma)
 
 plt.semilogy(t,convergence)
 #plt.plot(t,convergence)
@@ -622,7 +657,7 @@ plt.xlabel('time / s')
 plt.ylabel('Mean Error')
 plt.tight_layout()
 #plt.show()
-plt.savefig('pics/convergence.png',dpi=600)
+plt.savefig('pics_threegauss/convergence.png',dpi=600)
 plt.close()
 
 
@@ -630,30 +665,30 @@ plt.close()
 field = np.zeros(target.shape,dtype=np.float32)
 set_doses_field(field,exposure_indices,doses)
 
-exposure = calc_exposure(field,v_alpha,h_alpha,v_beta,h_beta)
+exposure = calc_exposure(field,v_alpha,h_alpha,v_beta,h_beta, v_gamma, h_gamma)
 plt.imshow((exposure-target))
 plt.colorbar()
 #plt.show()
 plt.tight_layout()
-plt.savefig('pics/exposure-target.png',dpi=1200)
+plt.savefig('pics_threegauss/exposure-target.png',dpi=1200)
 plt.close()
 
 plt.imshow(field)
 plt.colorbar()
 #plt.show()
 plt.tight_layout()
-plt.savefig('pics/doses.png',dpi=1200)
+plt.savefig('pics_threegauss/doses.png',dpi=1200)
 plt.close()
 
 field = np.zeros(target.shape,dtype=np.float32)
 set_doses_field(field,exposure_indices,doses)
-exposure = calc_exposure(field,v_alpha,h_alpha,v_beta,h_beta)
+exposure = calc_exposure(field,v_alpha,h_alpha,v_beta,h_beta, v_gamma, h_gamma)
 plt.imshow(exposure)
 plt.colorbar()
 plt.contour(exposure, [590])  # [290,300, 310])
 #plt.show()
 plt.tight_layout()
-plt.savefig('pics/exposure.png',dpi=1200)
+plt.savefig('pics_threegauss/exposure.png',dpi=1200)
 plt.close()
 
 
