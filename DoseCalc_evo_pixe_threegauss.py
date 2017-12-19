@@ -15,7 +15,7 @@ from scipy.stats import linregress
 from scipy import integrate
 from scipy.signal import convolve,convolve2d
 from scipy import linalg
-from drawnow import drawnow, figure
+#from drawnow import drawnow, figure
 from skimage.morphology import disk
 from skimage.filters import rank
 from scipy import ndimage, special
@@ -399,7 +399,7 @@ def smooth_doses(target,population,exposure_indices):
     return population
 
 population_size = 50#300
-max_iter = 100000
+max_iter = 2000000
 
 #@jit(float32(float32[:],float32[:],float32[:],float32[:],float32[:],float32[:]))
 @jit()
@@ -471,8 +471,8 @@ def iterate(exposure_indices,target, v_alpha, h_alpha, v_beta, h_beta, v_gamma, 
         if i >= max_iter:
             break
 
-        #if fitness[sorted_ind][0] < 0.01:#0.01:
-        #    break
+        if fitness[0] < 1:#0.01:
+           break
 
         #if i < 50:
         #    sigma = sigma_start # 1
@@ -517,7 +517,7 @@ def iterate(exposure_indices,target, v_alpha, h_alpha, v_beta, h_beta, v_gamma, 
 
             # if i in [5000]:#i == 1000 or i == 5000:
             #     population = smooth_doses(target,population,exposure_indices)
-            if not i%2000 and i > 1000:
+            if not i%50000 and i > 1000:
                 population = reinit_population(population)
                 #sigma = np.mean(population[:,0]) / 10
 
