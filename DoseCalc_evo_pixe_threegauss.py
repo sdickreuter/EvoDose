@@ -35,27 +35,7 @@ gamma = 3.50332807e+00
 current = 100 * 1e-12 # A
 dwell_time = 800 * 1e-9#200 * 1e-9 # s
 target_dose = 600#70 # uC/cm^2
-nmperpixel = 4 # nm
-
-def put_circle(x0,y0,r,exposure_indices=None):
-    r = int(r/nmperpixel) # pixel
-    x0 = int(x0/nmperpixel) # pixel
-    y0 = int(y0/nmperpixel) # pixel
-    x = np.linspace(-r,+r,2*r+1,dtype = np.int32)
-    y = np.linspace(-r,+r,2*r+1,dtype = np.int32)
-    x,y = np.meshgrid(x,y)
-    x = x.ravel()+x0
-    y = y.ravel()+y0
-
-    if exposure_indices is None:
-        exposure_indices = np.empty( shape=(0, 2) , dtype=np.int32)
-
-    for i in range(x.shape[0]):
-        if np.sqrt((x[i]-x0)**2+(y[i]-y0)**2) < r:
-                exposure_indices = np.vstack((exposure_indices,np.array([x[i],y[i]],dtype=np.int32)))
-
-    return exposure_indices
-
+nmperpixel = 5 # nm
 
 
 outfilename = 'test.txt'
@@ -568,6 +548,69 @@ if (alpha_p != alpha) or (beta_p != beta) or (gamma_p != gamma) or (a_p != a) or
 
 
 
+
+def put_circle(x0,y0,r,exposure_indices=None):
+    r = int(r/nmperpixel) # pixel
+    x0 = int(x0/nmperpixel) # pixel
+    y0 = int(y0/nmperpixel) # pixel
+    x = np.linspace(-r,+r,2*r+1,dtype = np.int32)
+    y = np.linspace(-r,+r,2*r+1,dtype = np.int32)
+    x,y = np.meshgrid(x,y)
+    x = x.ravel()+x0
+    y = y.ravel()+y0
+
+    if exposure_indices is None:
+        exposure_indices = np.empty( shape=(0, 2) , dtype=np.int32)
+
+    for i in range(x.shape[0]):
+        if np.round(np.sqrt((x[i]-x0)**2+(y[i]-y0)**2)) < r:
+                exposure_indices = np.vstack((exposure_indices,np.array([x[i],y[i]],dtype=np.int32)))
+
+    return exposure_indices
+
+
+@njit()
+def make_grid(size,dist):
+    size = int((size+size%2)/2)
+    size += size%2
+    print(size*2+1)
+    x = np.linspace(-size,size,2*size+1,dtype=np.float32)
+    x*=dist
+    y = x
+    x,y = np.meshgrid(x,y)
+    return x.ravel(),y.ravel()
+
+@jit()
+def get_hexgrid(size,dist,r):
+    x = np.zeros(0,dtype=np.float32)
+    y = np.zeros(0,dtype=np.float32)
+
+    d = dist# (dist+2*r)
+    a = np.sqrt(3)*d
+    dx = np.sqrt(3)
+    dy = 1/2
+
+    x_pos = np.arange(d,size-d,0.5*d*dx)
+    y_pos = np.arange(d,size-d,2*d*dy)
+
+    for i,x0 in enumerate(x_pos):
+        for j,y0 in enumerate(y_pos):
+            if (i % 2):
+                if (j+2) % 3:
+                    x = np.append(x, x0)
+                    if not i % 2:
+                        y = np.append(y, y0)
+                    else:
+                        y = np.append(y, y0+d*dy)
+            elif (j % 3):
+                x = np.append(x, x0)
+                if not i % 2:
+                    y = np.append(y, y0)
+                else:
+                    y = np.append(y, y0+d*dy)
+
+    return x,y
+
 #
 # field = np.zeros(target.shape,dtype=np.float32)
 # set_doses_field(field,exposure_indices,doses)
@@ -578,7 +621,6 @@ if (alpha_p != alpha) or (beta_p != beta) or (gamma_p != gamma) or (a_p != a) or
 # target = target*exposure.max()
 # plt.imshow(target-exposure)
 # plt.show()
-
 
 
 
@@ -598,30 +640,22 @@ if (alpha_p != alpha) or (beta_p != beta) or (gamma_p != gamma) or (a_p != a) or
 # plt.show()
 
 
-def make_grid(size,dist):
-    size = int((size+size%2)/2)
-    size += size%2
-    print(size*2+1)
-    x = np.linspace(-size,size,2*size+1,dtype=np.float32)
-    x*=dist
-    y = x
-    x,y = np.meshgrid(x,y)
-    return x.ravel(),y.ravel()
+field_size = 2000
 
 
 r = 30
-dist = r+30
-# x,y = make_grid(1,dist)
-# x += 500
-# y += 500
-# exposure_indices = np.empty( shape=(0, 2) , dtype=np.int32)
-# for i in range(x.shape[0]):
-#     exposure_indices = put_circle(x[i], y[i], r, exposure_indices=exposure_indices)
-
+dist = r+40
+x,y = get_hexgrid(field_size,dist,r)
+#x += 500
+#y += 500
 exposure_indices = np.empty( shape=(0, 2) , dtype=np.int32)
-exposure_indices = put_circle(200,200,r)
-exposure_indices = put_circle(200+dist,200,r,exposure_indices=exposure_indices)
-exposure_indices = put_circle(200-dist,200,r,exposure_indices=exposure_indices)
+for i in range(x.shape[0]):
+    exposure_indices = put_circle(x[i], y[i], r, exposure_indices=exposure_indices)
+
+# exposure_indices = np.empty( shape=(0, 2) , dtype=np.int32)
+# exposure_indices = put_circle(200,200,r)
+# exposure_indices = put_circle(200+dist,200,r,exposure_indices=exposure_indices)
+# exposure_indices = put_circle(200-dist,200,r,exposure_indices=exposure_indices)
 # exposure_indices = put_circle(500,500+dist,r,exposure_indices=exposure_indices)
 # exposure_indices = put_circle(500,500-dist,r,exposure_indices=exposure_indices)
 # exposure_indices = put_circle(500+dist,500+dist,r,exposure_indices=exposure_indices)
@@ -629,7 +663,7 @@ exposure_indices = put_circle(200-dist,200,r,exposure_indices=exposure_indices)
 # exposure_indices = put_circle(500+dist,500-dist,r,exposure_indices=exposure_indices)
 # exposure_indices = put_circle(500-dist,500+dist,r,exposure_indices=exposure_indices)
 
-target = generate_empty_field_matrix(400)
+target = generate_empty_field_matrix(field_size)
 set_target(target,exposure_indices,600.0)
 
 plt.imshow(target)
@@ -637,7 +671,7 @@ plt.show()
 
 
 doses = np.linspace(90000,100000,exposure_indices.shape[0],dtype=np.float32)
-field = generate_empty_field_matrix(400)
+field = generate_empty_field_matrix(field_size)
 set_doses_field(field,exposure_indices,doses)
 exposure = calc_exposure(field,v_alpha,h_alpha,v_beta,h_beta, v_gamma, h_gamma)
 print(np.sum(exposure-target))
@@ -650,6 +684,11 @@ plt.show()
 
 print("Starting Iteration")
 doses, t, convergence = iterate(exposure_indices,target, v_alpha, h_alpha, v_beta, h_beta, v_gamma, h_gamma)
+
+with open('exposure_field'+str(field_size)+'_dist'+str(dist)+'_r'+str(r)+'.obj', 'wb') as fp:
+    pickle.dump((doses,exposure_indices,target), fp)
+
+
 
 plt.semilogy(t,convergence)
 #plt.plot(t,convergence)
