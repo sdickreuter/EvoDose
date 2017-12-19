@@ -19,6 +19,8 @@ from drawnow import drawnow, figure
 from skimage.morphology import disk
 from skimage.filters import rank
 from scipy import ndimage, special
+from progress.bar import Bar
+
 
 try:
    import cPickle as pickle
@@ -680,55 +682,74 @@ plt.show()
 
 
 
-#def iterate(x0,y0,repetitions,target):
+dists = [20]
+for i in range(30):
+    dists.append(dists[i]+2)
 
-print("Starting Iteration")
-doses, t, convergence = iterate(exposure_indices,target, v_alpha, h_alpha, v_beta, h_beta, v_gamma, h_gamma)
+radius = [30,40,50,60,70,80]
 
-with open('exposure_field'+str(field_size)+'_dist'+str(dist)+'_r'+str(r)+'.obj', 'wb') as fp:
-    pickle.dump((doses,exposure_indices,target), fp)
+n_total = len(radius) * len(dists)
+bar = Bar('Status', max=n_total)
 
+at = 0
 
-
-plt.semilogy(t,convergence)
-#plt.plot(t,convergence)
-plt.xlabel('time / s')
-plt.ylabel('Mean Error')
-plt.tight_layout()
-#plt.show()
-plt.savefig('pics_threegauss/convergence.png',dpi=600)
-plt.close()
+for r in range(len(radius)):
+    for k in range(len(dists)):
+        print("radius #: {0:d}/{1:d} {4:s} ,dist #: {2:d}/{3:d}, iter #: {6:d}/{5:d}".format(r + 1, len(radius), k + 1, len(dists), n_total, at))
 
 
+        doses, t, convergence = iterate(exposure_indices,target, v_alpha, h_alpha, v_beta, h_beta, v_gamma, h_gamma)
 
-field = np.zeros(target.shape,dtype=np.float32)
-set_doses_field(field,exposure_indices,doses)
+        with open('exposure_field'+str(field_size)+'_dist'+str(dist)+'_r'+str(r)+'.obj', 'wb') as fp:
+            pickle.dump((doses,exposure_indices,target), fp)
 
-exposure = calc_exposure(field,v_alpha,h_alpha,v_beta,h_beta, v_gamma, h_gamma)
-plt.imshow((exposure-target))
-plt.colorbar()
-#plt.show()
-plt.tight_layout()
-plt.savefig('pics_threegauss/exposure-target.png',dpi=1200)
-plt.close()
 
-plt.imshow(field)
-plt.colorbar()
-#plt.show()
-plt.tight_layout()
-plt.savefig('pics_threegauss/doses.png',dpi=1200)
-plt.close()
 
-field = np.zeros(target.shape,dtype=np.float32)
-set_doses_field(field,exposure_indices,doses)
-exposure = calc_exposure(field,v_alpha,h_alpha,v_beta,h_beta, v_gamma, h_gamma)
-plt.imshow(exposure)
-plt.colorbar()
-plt.contour(exposure, [590])  # [290,300, 310])
-#plt.show()
-plt.tight_layout()
-plt.savefig('pics_threegauss/exposure.png',dpi=1200)
-plt.close()
+        plt.semilogy(t,convergence)
+        #plt.plot(t,convergence)
+        plt.xlabel('time / s')
+        plt.ylabel('Mean Error')
+        plt.tight_layout()
+        #plt.show()
+        plt.savefig('pics_threegauss/convergence'+str(field_size)+'_dist'+str(dist)+'_r'+str(r)+'.png',dpi=600)
+        plt.close()
+
+
+
+        field = np.zeros(target.shape,dtype=np.float32)
+        set_doses_field(field,exposure_indices,doses)
+
+        exposure = calc_exposure(field,v_alpha,h_alpha,v_beta,h_beta, v_gamma, h_gamma)
+        plt.imshow((exposure-target))
+        plt.colorbar()
+        #plt.show()
+        plt.tight_layout()
+        plt.savefig('pics_threegauss/exposure-target'+str(field_size)+'_dist'+str(dist)+'_r'+str(r)+'.png',dpi=1200)
+        plt.close()
+
+        plt.imshow(field)
+        plt.colorbar()
+        #plt.show()
+        plt.tight_layout()
+        plt.savefig('pics_threegauss/doses'+str(field_size)+'_dist'+str(dist)+'_r'+str(r)+'.png',dpi=1200)
+        plt.close()
+
+        field = np.zeros(target.shape,dtype=np.float32)
+        set_doses_field(field,exposure_indices,doses)
+        exposure = calc_exposure(field,v_alpha,h_alpha,v_beta,h_beta, v_gamma, h_gamma)
+        plt.imshow(exposure)
+        plt.colorbar()
+        plt.contour(exposure, [590])  # [290,300, 310])
+        #plt.show()
+        plt.tight_layout()
+        plt.savefig('pics_threegauss/exposure'+str(field_size)+'_dist'+str(dist)+'_r'+str(r)+'.png',dpi=1200)
+        plt.close()
+
+        bar.next()
+        print("ETA: " + str(bar.eta_td))
+        at += 1
+
+bar.finish()
 
 
 # Outputfile = open(outfilename,'w')
