@@ -701,7 +701,7 @@ for r in range(len(radius)):
         doses, t, convergence = iterate(exposure_indices,target, v_alpha, h_alpha, v_beta, h_beta, v_gamma, h_gamma)
 
         with open('exposure_field'+str(field_size)+'_dist'+str(dist)+'_r'+str(r)+'.obj', 'wb') as fp:
-            pickle.dump((doses,exposure_indices,target), fp)
+            pickle.dump((doses,exposure_indices,target,nmperpixel), fp)
 
 
 
