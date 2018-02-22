@@ -70,13 +70,15 @@ plt.show()
 # bounds = [lower, upper]
 # popt, pcov = curve_fit(fit_fun, x_m, y_m, p0,bounds=bounds,**{'method':'trf','xtol':1e-30,'gtol':1e-20,'ftol':1e-20,'verbose':2,'loss':'arctan'})
 
-fit_fun = lambda x, a,b,c,alpha,beta,gamma,amp,offset : amp* (calc_prox(x,a,b,c,alpha,beta,gamma)) +offset
+fit_fun = lambda x, a,b,c,alpha,beta,gamma : (calc_prox(x,a,b,c,alpha,beta,gamma))
 
 #p0 = [20,2000,5,0.1,0.1,30,0]
 p0 = [1,0.01,0.1,10,100,10,1,0]
+p0 = [  3.0e01,   1.0e-03,   1.0e00,   1.0e01,  3.7e03,   3.5e00]
+
 #p0 = [  1.3e01,   2.0e02,   3.0e04,   1.3e01,  -5.4e01,   1.6e02,   1.4e01,   7.0e06]
-upper = (1e12,1e12,1e12,1e12,1e12,1e12,1e12,1e12)
-lower = (0,0,0,0,0,0,0,0)
+upper = (1e12,1e12,1e12,1e12,1e12,1e12)
+lower = (0,0,0,0,0,0)
 bnds = []
 for j in range(len(upper)):
     bnds.append((lower[j], upper[j]))
@@ -90,7 +92,7 @@ minimizer_kwargs = {"method": "L-BFGS-B", "tol": 1e-12,"bounds": bnds}
 #res = basinhopping(err_fun, p0, minimizer_kwargs=minimizer_kwargs, niter=200,disp=True)
 #res = minimize(err_fun, p0, method='SLSQP', tol=1e-12, bounds=bnds, options={'disp': True, 'maxiter': 500})
 #res = minimize(err_fun, p0, method='L-BFGS-B', jac=False, options={'disp': True, 'maxiter': 5000})
-res = minimize(err_fun, p0, method='nelder-mead', options={'xtol': 1e-20, 'disp': True, 'maxiter': 5000})
+res = minimize(err_fun, p0, method='nelder-mead', options={'xtol': 1e-20, 'disp': True, 'maxiter': 50000})
 popt = res.x
 
 
@@ -99,8 +101,8 @@ print(popt)
 #x = np.linspace(x_m.min(),x_m.max(),500,dtype=np.float64)
 x = np.linspace(1,x_m.max(),2000,dtype=np.float64)
 
-y_fit = fit_fun(x,popt[0],popt[1],popt[2],popt[3],popt[4],popt[5],popt[6],popt[7])
-y = fit_fun(x,p0[0],p0[1],p0[2],p0[3],p0[4],p0[5],p0[6],p0[7])
+y_fit = fit_fun(x,popt[0],popt[1],popt[2],popt[3],popt[4],popt[5])
+y = fit_fun(x,p0[0],p0[1],p0[2],p0[3],p0[4],p0[5])
 
 
 name = "proximity.png"
@@ -138,20 +140,27 @@ plt.tight_layout(.5)
 #plt.close()
 plt.show()
 
-#def calc_prox(r,a,b,c,alpha,beta,gamma):
-normalization0 = 17971.512008579837
-normalization = integrate.quad(lambda x: 2*np.pi*x*(1/normalization0)*calc_prox(x,popt[0],popt[1],popt[2],popt[3],popt[5],popt[6]), 0, np.inf)
-print('norm:'+str(normalization))
+# #def calc_prox(r,a,b,c,alpha,beta,gamma):
+# normalization0 = 17971.512008579837
+# normalization = integrate.quad(lambda x: 2*np.pi*x*(1/normalization0)*calc_prox(x,popt[0],popt[1],popt[2],popt[3],popt[5],popt[6]), 0, np.inf)
+# print('norm:'+str(normalization))
 
 
-a = 1.92520559e+01
-b = 1.40697462e-04
-c = 1.66089035e+00
-alpha = -1.70504796e+01
-beta = 3.74249694e+03
-gamma = 3.50332807e+00
+# a = 1.92520559e+01
+# b = 1.40697462e-04
+# c = 1.66089035e+00
+# alpha = -1.70504796e+01
+# beta = 3.74249694e+03
+# gamma = 3.50332807e+00
 
-normalization0 = 25311.230793201186
+a = 3.33818554e+01
+b = 2.35068751e-04
+c = 2.73254430e+00
+alpha = 1.71120218e+01
+beta = 3.94207696e+03
+gamma = 3.59873819e+00
+
+normalization0 = 44853.19174033405
 def calc_prox(r):
     return   (1/normalization0)*( a*np.exp(-r**2/alpha**2) + b*np.exp(-r**2/beta**2) + c*np.exp(-np.sqrt(r/gamma)) )
 normalization = integrate.quad(lambda x: 2*np.pi*x*calc_prox(x), 0, np.inf)
