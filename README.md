@@ -1,7 +1,7 @@
 # EvoDose
 Python code for electron beam lithography (EBL) proximity correction based on the minimization of the error with an evolutionary algorithm. Can export files for XENOS and Raith EBL systems.
 
-.. TODO ..
+See dimer_example.py on how to use it.
 
 Here's how it works:
 Patterns are defined by exposure points (blue) and check points (red):
@@ -18,5 +18,6 @@ With this one can also plot a dose distribution:
 The black line is where the dose is exactly at 600 uC/cm^2, and gives a clue on how the exposed pattern will look like.
 The plots are made with dimer_example.py.
 
-EvoDose is suited best for small structures, where the dose inside the structure will be reached automatically by the exposure points on the outside. It is possible to setup structures with checkpoints on the inside, but it is harder to get good results.
-Also for thin elongated structures, the algorithm struggles to converge nicely (see line_example). One solution is to change the fitness function (TODO) to include the divergence of the dose of the exposure points which helps the algorithm to get a more symmetric result.
+EvoDose is suited best for small structures, where the dose inside the structure will be reached automatically by the exposure points on the outside. It is possible to setup structures with checkpoints on the inside, but it is harder to get good convergence, because the placement and distance of these inner check points from the exposure points has great influence on the degrees of freedom of the minimization problem.
+
+Also for thin elongated structures, the algorithm struggles to converge nicely (see line_example.py). One solution is to change the fitness function to include the divergence of the dose of the exposure points which helps the algorithm to get a more symmetric result, see see line_example.py for reference.
