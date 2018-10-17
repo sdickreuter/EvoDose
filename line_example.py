@@ -33,7 +33,7 @@ x0, y0, cx, cy = get_line(500,60,50)
 
 doses, t, convergence = iterate(x0, y0, cx, cy)
 
-#------- adjust positions
+#------- adjust position
 x0 = x0 +500
 y0 = y0 +500
 cx = cx + 500
@@ -60,7 +60,7 @@ exposure = exposure/pixel_area # uC/cm^2
 
 #----------- Make Plots ----------------------------------
 
-name = "pics/"+outfilename+".pdf"
+name = "pics/"+outfilename[:-4]+".pdf"
 plot = plt.imshow(np.flipud(exposure),extent=[np.min(x),np.max(x),np.min(y),np.max(y)])
 cb = plt.colorbar()
 #cb.set_label('Dosis / uC/cm^2 ')
@@ -87,7 +87,7 @@ pixel_area = np.abs(x[0] - x[1]) * np.abs(x[0] - x[1])  # nm^2
 pixel_area = pixel_area * 1e-14  # cm^2
 exposure = exposure/pixel_area # uC/cm^2
 
-name = "pics/"+outfilename+"_expected.pdf"
+name = "pics/"+outfilename[:-4]+"_expected.pdf"
 plot = plt.imshow(np.flipud(exposure >= parameters.target_dose),extent=[np.min(x),np.max(x),np.min(y),np.max(y)])
 plt.scatter(x0,y0,c="blue")
 plt.scatter(cx.ravel(), cy.ravel(), c="red")
@@ -98,7 +98,7 @@ plt.tight_layout()
 plt.savefig(name,dpi=200)
 plt.close()
 
-name = "pics/"+outfilename+"_convergence.pdf"
+name = "pics/"+outfilename[:-4]+"_convergence.pdf"
 print("time for iteration: "+ str(np.round(np.max(t),2))+" seconds")
 plt.semilogy(t,convergence)
 plt.xlabel('time / s')
@@ -107,7 +107,7 @@ plt.tight_layout()
 plt.savefig(name,dpi=200)
 plt.close()
 
-name = "pics/"+outfilename+"_scatter.pdf"
+name = "pics/"+outfilename[:-4]+"_scatter.pdf"
 area = np.pi * (15*doses/np.max(doses))**2
 #area = np.pi * ( 0.005*(np.max(y)-np.min(y)) * repetitions / np.max(repetitions)) ** 2
 plt.scatter(x0, y0, s=area, alpha=0.5,edgecolors="black",linewidths=1)

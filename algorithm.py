@@ -15,8 +15,8 @@ def calc_prox(r):
     return (1/normalization) * (1/(math.pi*(1+parameters.eta_1+parameters.eta_2))) * ( (1/(parameters.alpha**2))*math.exp(-r**2/parameters.alpha**2) + (parameters.eta_1/parameters.beta**2)*math.exp(-r**2/parameters.beta**2) + (parameters.eta_2/(24*parameters.gamma**2))*math.exp(-math.sqrt(r/parameters.gamma)) )
 # [return] = C/nm !!!
 normalization = integrate.quad(lambda x: 2*np.pi*x*calc_prox(x), 0, np.inf)
-print('norm:'+str(normalization))
-#normalization = 2.41701729505915
+# uncomment to check normalization
+#print('norm:'+str(normalization))
 
 #----------- Genetic Algorithm --------------
 

@@ -33,12 +33,6 @@ x0, y0, cx, cy = get_dimer(20,40,24)
 
 doses, t, convergence = iterate(x0, y0, cx, cy)
 
-#------- adjust positions
-x0 = x0 +500
-y0 = y0 +500
-cx = cx + 500
-cy = cy + 500
-
 #--------------- Write Pattern -------------
 output_xenos(outfilename,'line_test',x0,y0,doses)
 output_raith(outfilename[:-3]+'asc',1,x0,y0,doses)
@@ -60,7 +54,7 @@ exposure = exposure/pixel_area # uC/cm^2
 
 #----------- Make Plots ----------------------------------
 
-name = "pics/"+outfilename+".pdf"
+name = "pics/"+outfilename[:-4]+".png"
 plot = plt.imshow(np.flipud(exposure),extent=[np.min(x),np.max(x),np.min(y),np.max(y)])
 cb = plt.colorbar()
 #cb.set_label('Dosis / uC/cm^2 ')
@@ -69,7 +63,7 @@ plt.contour(x.reshape(orig_shape), y.reshape(orig_shape), exposure, [parameters.
 plt.xlabel(r'$x\,  /\,  nm')
 plt.ylabel(r'$y\,  /\,  nm')
 plt.tight_layout(.5)
-plt.savefig(name,dpi=200)
+plt.savefig(name,dpi=600)
 plt.close()
 
 #x = np.arange(np.min(x0)-50,np.max(x0)+50,step=0.2)
@@ -87,7 +81,7 @@ pixel_area = np.abs(x[0] - x[1]) * np.abs(x[0] - x[1])  # nm^2
 pixel_area = pixel_area * 1e-14  # cm^2
 exposure = exposure/pixel_area # uC/cm^2
 
-name = "pics/"+outfilename+"_expected.pdf"
+name = "pics/"+outfilename[:-4]+"_expected.png"
 plot = plt.imshow(np.flipud(exposure >= parameters.target_dose),extent=[np.min(x),np.max(x),np.min(y),np.max(y)])
 plt.scatter(x0,y0,c="blue")
 plt.scatter(cx.ravel(), cy.ravel(), c="red")
@@ -95,19 +89,19 @@ plt.axes().set_aspect('equal')
 plt.xlabel(r'$x\,  /\,  nm')
 plt.ylabel(r'$y\,  /\,  nm')
 plt.tight_layout()
-plt.savefig(name,dpi=200)
+plt.savefig(name,dpi=600)
 plt.close()
 
-name = "pics/"+outfilename+"_convergence.pdf"
+name = "pics/"+outfilename[:-4]+"_convergence.png"
 print("time for iteration: "+ str(np.round(np.max(t),2))+" seconds")
 plt.semilogy(t,convergence)
 plt.xlabel('time / s')
 plt.ylabel('Mean Error')
 plt.tight_layout()
-plt.savefig(name,dpi=200)
+plt.savefig(name,dpi=600)
 plt.close()
 
-name = "pics/"+outfilename+"_scatter.pdf"
+name = "pics/"+outfilename[:-4]+"_scatter.png"
 area = np.pi * (15*doses/np.max(doses))**2
 #area = np.pi * ( 0.005*(np.max(y)-np.min(y)) * repetitions / np.max(repetitions)) ** 2
 plt.scatter(x0, y0, s=area, alpha=0.5,edgecolors="black",linewidths=1)
@@ -115,7 +109,7 @@ plt.axes().set_aspect('equal', 'datalim')
 plt.xlabel(r'$x\,  /\,  nm')
 plt.ylabel(r'$y\,  /\,  nm')
 plt.tight_layout()
-plt.savefig(name,dpi=200)
+plt.savefig(name,dpi=600)
 plt.close()
 x0 = x0/1000+0.5
 y0 = y0/1000+0.5
