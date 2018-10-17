@@ -3,7 +3,7 @@ Python code for electron beam lithography (EBL) proximity correction based on th
 
 See dimer_example.py on how to use it.
 
-Here's how it works:
+## How it works
 Patterns are defined by exposure points (blue) and check points (red):
 ![pillar_dimer_36_30_expected](https://user-images.githubusercontent.com/6985888/47080356-1513f180-d208-11e8-9ddf-df3a0c6d2a63.png)
 
@@ -17,6 +17,8 @@ With this one can also plot a dose distribution:
 
 The black line is where the dose is exactly at 600 uC/cm^2, and gives a clue on how the exposed pattern will look like.
 The plots are made with dimer_example.py.
+
+## Scope
 
 EvoDose is suited best for small structures, where the dose inside the structure will be reached automatically by the exposure points on the outside. It is possible to setup structures with checkpoints on the inside, but it is harder to get good convergence, because the placement and distance of these inner check points from the exposure points has great influence on the degrees of freedom of the minimization problem.
 
