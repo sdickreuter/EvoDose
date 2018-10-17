@@ -100,22 +100,14 @@ def calc_fitness(population,proximity):
     pixel_area =  1 #nm^2 #pixel_area * 1e-14  # cm^2
 
     for p in range(population.shape[1]):
-        #for i in range(population.shape[0]):
-        #    repetitions[i] = round(population[i,p])
         exposure = calc_exposure(proximity[:, :], population[:, p] )
         exposure = (exposure* 1e6)/(pixel_area*1e-14 ) # uC/cm^2
-        #sum = 0.0
-        #for i in range(exposure.shape[0]):
-        #    sum += math.fabs(target_dose-exposure[i])
-        #fitness[p] = sum/exposure.shape[0]
-        #fitness[p] = np.sum(np.abs(target_dose-exposure))/exposure.shape[0]
         fitness[p] = np.mean(np.abs(np.subtract(parameters.target_dose,exposure)))**2
 
     return fitness
 
 @njit(float64[:,:](float64[:,:]),parallel=True)
 def recombine_population(population):
-    #n_recombination = 6
     #n_recombination = int(population.shape[1]/3)
     n_recombination = int(population.shape[1]/2)
     #n_recombination = int(population.shape[1])
@@ -218,12 +210,14 @@ def iterate(x0,y0,cx,cy):
                 population[j, i] = 0
 
     starting_sigma = parameters.starting_dose/2
-    #print("Starting Iteration")
+
     sigma = 0
     slope = 0.0
     std_err = 0.0
     variance = 0.0
     starttime = time.time()
+
+    print('Starting optimization ...')
 
     for i in range(parameters.max_iter):
         fitness = calc_fitness(population, proximity)
@@ -232,7 +226,7 @@ def iterate(x0,y0,cx,cy):
         fitness = fitness[sorted_ind]
         population = population[:,sorted_ind]
 
-        if 100*np.sqrt(fitness[0])/parameters.target_dose < parameters.target_fitness:#0.01:
+        if 100*np.sqrt(fitness[0])/parameters.target_dose < parameters.target_fitness:
             break
 
 
@@ -245,10 +239,6 @@ def iterate(x0,y0,cx,cy):
                 indices = np.arange(i-500,i,step=1)
                 slope, intercept, r_value, p_value, std_err = linregress(t[indices],convergence[indices])
                 variance = np.var(fitness) / fitness[0]
-                # if (std_err > 0.001) or (slope > 0):
-                #     sigma *= 0.99
-                # if (std_err < 0.001):# and (slope > 0):
-                #     sigma *= 1.03
                 if slope > 0 and variance > 0.0001:
                     if sigma > starting_sigma*0.00001:
                         sigma *= 0.98
@@ -256,9 +246,6 @@ def iterate(x0,y0,cx,cy):
                 if slope > 0 and variance < 0.0001:
                     if sigma < starting_sigma:
                         sigma *= 1.02
-
-
-        #sigma = np.sqrt(fitness[0])/4
 
         population = recombine_population(population)
         population = mutate_population(population,sigma)

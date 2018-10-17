@@ -1,6 +1,6 @@
 import numpy as np
+from plotsettings import *
 import matplotlib.pyplot as plt
-
 
 from structures import get_line
 from algorithm import iterate, calc_map

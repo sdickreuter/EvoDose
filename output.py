@@ -25,6 +25,7 @@ def output_xenos(outfilename,patternname,x0,y0,doses):
 
     Outputfile.close()
 
+
 def output_raith(outfilename,layer,x0,y0,doses):
     rel_doses = np.round(doses / doses.max() * 100)
     with open(outfilename, 'w') as Outputfile:
