@@ -23,3 +23,12 @@ The plots are made with dimer_example.py.
 EvoDose is suited best for small structures, where the dose inside the structure will be reached automatically by the exposure points on the outside. It is possible to setup structures with checkpoints on the inside, but it is harder to get good convergence, because the placement and distance of these inner check points from the exposure points has great influence on the degrees of freedom of the minimization problem.
 
 Also for thin elongated structures, the algorithm struggles to converge nicely (see line_example.py). One solution is to change the fitness function to include the divergence of the dose of the exposure points which helps the algorithm to get a more symmetric result, see see line_example.py for reference.
+
+## Tips & Tricks
+
+If convergence does not work, consider the following points:
+- Tuning parameters.population_size can help with convergence, but also increases computation time
+- Tune parameters.mutation_rate and/or parameters.crossover_size
+- Change behaviour of the iterate function in algorithm.py, it has a simple mechanism built-in for lowering the sigma value with increasing iterations and thus annealing the populations of the algorithm. This greatly enhances convergence, but the way it is done might not be good for all problems.
+- In algorithm.py there are different, commented out, versions of recombine_population and recombine_arrays that will change the convergence behaviour.
+- **Most important**: Convergence is only possible if the minimization of your structure is possible, try using as few check and epxosure points as possible and change their adjust their position to enhance convergence. This is especially important for check points that are inside of structures.
