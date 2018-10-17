@@ -47,7 +47,9 @@ def recombine_arrays(arr1, arr2):
     res = np.zeros((len(arr1), 2), dtype=np.float64)
     res[:, 0] = arr1
     res[:, 1] = arr2
-    n_crossover = int(len(arr1)/3)
+    #n_crossover = int(len(arr1)/3)
+    n_crossover = int(len(arr1) * parameters.crossover_size)
+
     i = 0
     for i in prange(n_crossover):
         k = np.random.randint(0, len(arr1) - 1)
@@ -95,15 +97,12 @@ def mutate(arr,sigma,mutation_rate):
 @njit(float64[:](float64[:,:],float64[:,:]),parallel=True)
 def calc_fitness(population,proximity):
     fitness = np.zeros(population.shape[1],dtype=np.float64)
-    #exposure = np.zeros(population.shape[1],dtype=np.float64)
     pixel_area =  1 #nm^2 #pixel_area * 1e-14  # cm^2
-    #repetitions = np.zeros(population.shape[0],dtype=np.float64)
 
     for p in range(population.shape[1]):
         #for i in range(population.shape[0]):
         #    repetitions[i] = round(population[i,p])
-        exposure = calc_exposure(proximity[:, :], population[:, p] * parameters.current * parameters.dwell_time)
-            #exposure = calc_map(proximity[:, j, :], repetitions * current * dwell_time)
+        exposure = calc_exposure(proximity[:, :], population[:, p] )
         exposure = (exposure* 1e6)/(pixel_area*1e-14 ) # uC/cm^2
         #sum = 0.0
         #for i in range(exposure.shape[0]):
@@ -166,63 +165,61 @@ def recombine_population(population):
 #     return new_pop
 
 
-@njit(float64[:,:](float64[:,:],float64, float64),parallel=True)
-def mutate_population(population,sigma,mutation_rate):
-    for i in prange(population.shape[1]):
-        population[:, i] = mutate(population[:, i], sigma, mutation_rate)
+@njit(float64[:,:](float64[:,:], float64),parallel=True)
+def mutate_population(population,sigma):
+    #for i in prange(population.shape[1]):
+    #    population[:, i] = mutate(population[:, i], sigma, parameters.mutation_rate)
 
-    # for i in range(population.shape[1]):
-    #     #if i < int(population.shape[1]/3):
-    #     if i < 4:
-    #         population[:, i] = mutate(population[:, i], sigma/10, mutation_rate)#
-    #     elif i < 10:
-    #         population[:, i] = mutate(population[:, i], sigma/2, mutation_rate)#
-    #     else:
-    #         population[:, i] = mutate(population[:, i], sigma, mutation_rate)  #
+    for i in range(population.shape[1]):
+        #if i < int(population.shape[1]/3):
+        if i < 4:
+            population[:, i] = mutate(population[:, i], sigma/10, parameters.mutation_rate)#
+        elif i < 10:
+            population[:, i] = mutate(population[:, i], sigma/2, parameters.mutation_rate)#
+        else:
+            population[:, i] = mutate(population[:, i], sigma, parameters.mutation_rate)  #
     return population
 
 @njit(float64[:,:](float64[:,:]),parallel=True)
 def check_limits(population):
     for i in prange(population.shape[1]):
         for j in range(population.shape[0]):
-            if population[j, i] < 0.1:
+            if population[j, i] < 0:
                 population[j, i] = 0
     return population
 
 
 @jit()#(float64(float64[:],float64[:],float64[:],float64[:],float64[:],float64[:]))
-def iterate(x0,y0,repetitions,target):
-    mutation_rate = 0.2
+def iterate(x0,y0,cx,cy):
+
     logpoints = np.arange(500,parameters.max_iter,500)
     #logpoints = np.array([max_iter+1])
     checkpoints = np.arange(50,parameters.max_iter,50)
 
     population = np.zeros((len(x0),parameters.population_size),dtype=np.float64)
     fitness = np.zeros(parameters.population_size,dtype=np.float64)
-    pixel_area =  1 #nm^2 #pixel_area * 1e-14  # cm^2
 
-
-    proximity = np.zeros((population.shape[0],target.shape[0]),dtype=np.float64)
+    proximity = np.zeros((population.shape[0],cx.shape[0]),dtype=np.float64)
     convergence = np.zeros(parameters.max_iter)
     t = np.zeros(parameters.max_iter)
 
     i = 0
     j = 0
     for i in range(population.shape[0]):
-        for j in range(target.shape[0]):
-            proximity[i,j] = calc_prox(dist(x0[i],y0[i],target[j,0],target[j,1]))
+        for j in range(cx.shape[0]):
+            proximity[i,j] = calc_prox(dist(x0[i],y0[i],cx[j],cy[j]))
 
-    start = np.linspace(0,200,num=parameters.population_size)
+    start = np.linspace(0,parameters.starting_dose*10,num=parameters.population_size)
     for i in range(parameters.population_size):
-        #population[:, i] = repetitions + np.random.randint(-50, 50)
-        population[:, i] = np.repeat(start[i],len(repetitions))
-        for j in range(len(repetitions)):
-            population[j, i] = population[j, i]+np.random.randint(-20,20)
-            if population[j, i] < 1:
-                population[j, i] = 1
+        population[:, i] = np.repeat(start[i],len(x0))
+        for j in range(len(x0)):
+            population[j, i] = population[j, i]+(np.random.rand()-0.5)*parameters.starting_dose*0.1
+            if population[j, i] < 0:
+                population[j, i] = 0
 
+    starting_sigma = parameters.starting_dose/2
     #print("Starting Iteration")
-    sigma = 5.0
+    sigma = 0
     slope = 0.0
     std_err = 0.0
     variance = 0.0
@@ -240,9 +237,9 @@ def iterate(x0,y0,repetitions,target):
 
 
         if i < 2000:
-            sigma = 5#1
+            sigma = starting_sigma#1
         elif i < 4000:
-            sigma = 2#0.5
+            sigma = starting_sigma/2#0.5
         else:
             if i in checkpoints:
                 indices = np.arange(i-500,i,step=1)
@@ -252,23 +249,23 @@ def iterate(x0,y0,repetitions,target):
                 #     sigma *= 0.99
                 # if (std_err < 0.001):# and (slope > 0):
                 #     sigma *= 1.03
-                if slope > 0 and variance > 0.01:
-                    if sigma > 0.001:
+                if slope > 0 and variance > 0.0001:
+                    if sigma > starting_sigma*0.00001:
                         sigma *= 0.98
 
-
-                if slope > 0 and variance < 0.01:
-                    if sigma < 1:
+                if slope > 0 and variance < 0.0001:
+                    if sigma < starting_sigma:
                         sigma *= 1.02
+
 
         #sigma = np.sqrt(fitness[0])/4
 
         population = recombine_population(population)
-        population = mutate_population(population,sigma,mutation_rate)
+        population = mutate_population(population,sigma)
 
         population = check_limits(population)
         if i in logpoints:
-            print("{0:7d}: fitness: {1:1.5f}%, sigma: {2:1.5f}, var: {3:1.5f}, slope: {4:1.5f}".format(i, 100*np.sqrt(fitness[0])/parameters.target_dose, sigma,variance,slope))
+            print("{0:7d}: fitness: {1:1.5f}%, sigma_rel: {2:1.5f}, var: {3:1.5f}, slope: {4:1.5f}".format(i, 100*np.sqrt(fitness[0])/parameters.target_dose, sigma/parameters.starting_dose,variance,slope))
 
         convergence[i] = fitness[0]
         t[i] = time.time() - starttime
