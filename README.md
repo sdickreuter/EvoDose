@@ -27,9 +27,9 @@ Also for thin elongated structures, the algorithm struggles to converge nicely (
 ## Tips & Tricks
 
 If convergence does not work, consider the following points:
-- Tuning parameters.population_size can help with convergence, but also increases computation time
-- Tune parameters.mutation_rate and/or parameters.crossover_size
-- Change behaviour of the iterate function in algorithm.py, it has a simple mechanism built-in for lowering the sigma value with increasing iterations and thus annealing the populations of the algorithm. This greatly enhances convergence, but the way it is done might not be good for all problems.
+- Change behaviour of the iterate function in algorithm.py, it has a simple mechanism built-in for lowering the sigma value with increasing iterations and thus annealing the populations of the algorithm. This greatly enhances convergence, but the way it is done might not be good for all problems, as the algorithm might get stuck in a local minima.
 - In algorithm.py there are different, commented out, versions of recombine_population and recombine_arrays that will change the convergence behaviour.
 - Check if parameters.target_fitness is actually reachable for your structure (very important when parameters.force_low_gradient = True), and tune it accordingly
+- Tuning parameters.population_size can help with convergence, but also increases computation time
+- Tune parameters.mutation_rate and/or parameters.crossover_size
 - **Most important**: Convergence is only possible if the minimization of your structure is possible, try using as few check and exposure points as possible and adjust their position to enhance convergence. This is especially important for check points that are inside of structures.
