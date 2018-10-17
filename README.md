@@ -24,6 +24,11 @@ EvoDose is suited best for small structures, where the dose inside the structure
 
 Also for thin elongated structures, the algorithm struggles to converge nicely (see line_example.py). One solution is to change the fitness function to include the divergence of the dose of the exposure points which helps the algorithm to get a more symmetric result, see see line_example.py for reference.
 
+## PSF
+
+The psf from Aya et. al. (http://iopscience.iop.org/article/10.1143/JJAP.35.1929/pdf) is used, but in principle any psf can be used. In the code the psf can be found in algorithm.py as the calc_prox function.
+An example on how to get the parameters for the psd (see parameters.py) from measurements is shown in fit_psf.py.
+
 ## Tips & Tricks
 
 If convergence does not work, consider the following points:
