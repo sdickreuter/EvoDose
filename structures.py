@@ -54,10 +54,10 @@ def get_trimer(dist,r,n, inner_circle=False, centre_dot = False,dose_check_radiu
         cx = np.hstack( (cx,cx1+x2) )
         cy = np.hstack( (cy,cy1+y2) )
 
-    x += 500
-    y += 500
-    cx += 500
-    cy += 500
+    # x += 500
+    # y += 500
+    # cx += 500
+    # cy += 500
 
     return x,y,cx,cy
 
@@ -69,11 +69,10 @@ def get_dimer(dist,r,n, inner_circle=False, centre_dot = False,dose_check_radius
     cx1 -= (r+dist/2)
     cx2 += (r+dist/2)
 
-    x = np.concatenate((x1,x2))+500
-    y = np.concatenate((y1,y2))+500
-    cx = np.concatenate((cx1,cx2))+500
-    cy = np.concatenate((cy1,cy2))+500
-    # cy = np.concatenate((y1,y2))+500
+    x = np.concatenate((x1,x2))#+500
+    y = np.concatenate((y1,y2))#+500
+    cx = np.concatenate((cx1,cx2))#+500
+    cy = np.concatenate((cy1,cy2))#+500
 
     return x,y, cx, cy
 
@@ -93,10 +92,10 @@ def get_hexamer(dist,r,n, inner_circle=False, centre_dot = False,dose_check_radi
         cx = np.hstack( (cx,cx1+x2) )
         cy = np.hstack( (cy,cy1+y2) )
 
-    x += 500
-    y += 500
-    cx += 500
-    cy += 500
+    # x += 500
+    # y += 500
+    # cx += 500
+    # cy += 500
 
     return x,y,cx,cy
 
@@ -110,10 +109,10 @@ def get_asymdimer(dist,r,n, inner_circle=False, centre_dot = False,dose_check_ra
     cx1 -= r+dist/2
     cx2 += r2+dist/2
 
-    x = np.concatenate((x1,x2))+500
-    y = np.concatenate((y1,y2))+500
-    cx = np.concatenate((cx1,cx2))+500
-    cy = np.concatenate((cy1,cy2))+500
+    x = np.concatenate((x1,x2))#+500
+    y = np.concatenate((y1,y2))#+500
+    cx = np.concatenate((cx1,cx2))#+500
+    cy = np.concatenate((cy1,cy2))#+500
     return x,y,cx,cy
 
 
@@ -130,10 +129,10 @@ def get_asymtrimer(dist,r,n, inner_circle=False, centre_dot = False,dose_check_r
     x3 -= r2+r3+dist
     cx3 -= r2+r3+dist
 
-    x = np.concatenate((x1,x2,x3))+500
-    y = np.concatenate((y1,y2,y3))+500
-    cx = np.concatenate((cx1,cx2,cx3))+500
-    cy = np.concatenate((cy1,cy2,cy3))+500
+    x = np.concatenate((x1,x2,x3))#+500
+    y = np.concatenate((y1,y2,y3))#+500
+    cx = np.concatenate((cx1,cx2,cx3))#+500
+    cy = np.concatenate((cy1,cy2,cy3))#+500
 
     return x,y,cx,cy
 
@@ -146,10 +145,10 @@ def get_single(dist,r,n, inner_circle=False, centre_dot = False,dose_check_radiu
     #else:
     #    x1, y1 = get_circle(r, n=32, inner_circle=False, centre_dot=True)
 
-    x = x1+500
-    y = y1+500
-    cx = cx1+500
-    cy = cy1+500
+    x = x1#+500
+    y = y1#+500
+    cx = cx1#+500
+    cy = cy1#+500
 
     return x,y,cx,cy
 
@@ -164,10 +163,10 @@ def get_triple(dist,r,n, inner_circle=False, centre_dot = False,dose_check_radiu
     cx1 -= 2*r+dist
     cx2 += 2*r+dist
 
-    x = np.concatenate((x1,x2,x3))+500
-    y = np.concatenate((y1,y2,y3))+500
-    cx = np.concatenate((cx1, cx2, cx3)) + 500
-    cy = np.concatenate((cy1, cy2, cy3)) + 500
+    x = np.concatenate((x1,x2,x3))#+500
+    y = np.concatenate((y1,y2,y3))#+500
+    cx = np.concatenate((cx1, cx2, cx3))# + 500
+    cy = np.concatenate((cy1, cy2, cy3))# + 500
 
     return x,y,cx,cy
 
@@ -189,10 +188,10 @@ def get_triple_rotated(dist,r,n, inner_circle=False, centre_dot = False,dose_che
     y2 -= y_rot
     cy2 -= y_rot
 
-    x = np.concatenate((x1,x2,x3))+500
-    y = np.concatenate((y1,y2,y3))+500
-    cx = np.concatenate((cx1, cx2, cx3)) + 500
-    cy = np.concatenate((cy1, cy2, cy3)) + 500
+    x = np.concatenate((x1,x2,x3))#+500
+    y = np.concatenate((y1,y2,y3))#+500
+    cx = np.concatenate((cx1, cx2, cx3))# + 500
+    cy = np.concatenate((cy1, cy2, cy3))# + 500
 
     return x,y,cx,cy
 
