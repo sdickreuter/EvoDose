@@ -21,3 +21,5 @@ target_fitness = 0.1
 # Advanced Parameters for Genetic Algorithm
 crossover_size = 1/3 # 0.0 - 1.0
 mutation_rate = 0.2
+force_low_gradient = False
+gradient_weight = 100

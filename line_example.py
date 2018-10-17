@@ -3,21 +3,27 @@ from plotsettings import *
 import matplotlib.pyplot as plt
 
 from structures import get_line
-from algorithm import iterate, calc_map
+from algorithm import iterate
 from output import output_xenos, output_raith
 from plot_functions import *
 import parameters
 
-# Parameters for Exposure
+#----- Parameters for Exposure -----
 parameters.current = 100 * 1e-12 # A
 parameters.dwell_time = 800 * 1e-9 # s
 parameters.target_dose = 600 # uC/cm^2
 parameters.starting_dose = parameters.target_dose*1e-16
 
-# Parameters for Genetic Algorithm
+#----- Parameters for Genetic Algorithm -----
 parameters.population_size = 50
 parameters.max_iter = 1000000
-parameters.target_fitness = 0.25
+
+# if using force_low_gradient, the target_fitness has to be adjusted, because
+# the fitness now can't reach zero anymore as there is always a gradient present.
+# Also gradient_weight can be adjusted to determine how much the gradient influences
+# the fitness
+parameters.force_low_gradient = True
+parameters.target_fitness = 1.08
 
 outfilename = 'line.txt'
 

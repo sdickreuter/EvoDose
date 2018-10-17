@@ -37,8 +37,8 @@ def plot_dose_map(filename,x,y,exposure):
 
 def plot_expected_shape(filename,x,y,exposure,x0,y0,cx,cy):
     plot = plt.imshow(np.flipud(exposure >= parameters.target_dose),extent=[np.min(x),np.max(x),np.min(y),np.max(y)])
-    plt.scatter(x0,y0,c="blue")
-    plt.scatter(cx.ravel(), cy.ravel(), c="red")
+    plt.scatter(x0,y0,c="blue",s=0.4)
+    plt.scatter(cx.ravel(), cy.ravel(), c="red",s=0.4)
     plt.axes().set_aspect('equal')
     plt.xlabel(r'$x\,  /\,  nm')
     plt.ylabel(r'$y\,  /\,  nm')

@@ -104,6 +104,10 @@ def calc_fitness(population,proximity):
         exposure = (exposure* 1e6)/(pixel_area*1e-14 ) # uC/cm^2
         fitness[p] = np.mean(np.abs(np.subtract(parameters.target_dose,exposure)))**2
 
+    if parameters.force_low_gradient:
+        for p in range(population.shape[1]):
+            fitness[p] = fitness[p] + np.mean(np.abs(population[:-1,p]-population[1:,p]))*1e14*parameters.gradient_weight
+
     return fitness
 
 @njit(float64[:,:](float64[:,:]),parallel=True)
@@ -222,7 +226,6 @@ def iterate(x0,y0,cx,cy):
     for i in range(parameters.max_iter):
         fitness = calc_fitness(population, proximity)
         sorted_ind = np.argsort(fitness)
-        #sorted_ind = argsort1D(fitness)
         fitness = fitness[sorted_ind]
         population = population[:,sorted_ind]
 
@@ -240,7 +243,7 @@ def iterate(x0,y0,cx,cy):
                 slope, intercept, r_value, p_value, std_err = linregress(t[indices],convergence[indices])
                 variance = np.var(fitness) / fitness[0]
                 if slope > 0 and variance > 0.0001:
-                    if sigma > starting_sigma*0.00001:
+                    if sigma > starting_sigma*0.000001:
                         sigma *= 0.98
 
                 if slope > 0 and variance < 0.0001:
