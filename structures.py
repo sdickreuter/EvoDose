@@ -15,7 +15,7 @@ and functions returning such a structure should be named 'get_[structure name]'.
 
 from typing import List, Tuple
 
-# define type aliases
+# Define type aliases. See https://docs.python.org/3/library/typing.html
 BasicShape = Tuple[np.ndarray, np.ndarray]
 Structure = Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
 Structures = List[Structure]
