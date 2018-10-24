@@ -31,7 +31,10 @@ def plot_dose_map(filename, x, y, exposure):
     axis = plot.axes
     cb = plt.colorbar()
     cb.set_label(r'$Dose\, / \, \frac{\mu C}{cm^2} ')
-    axis.contour(x, y, exposure, [parameters.target_dose], colors=['yellow'])
+    tg = parameters.target_dose
+    mark_doses = [0.5*tg, 0.9*tg, tg, 1.1*tg, 1.5*tg]
+    cs = ['green', 'green', 'yellow', 'orange', 'orange']
+    axis.contour(x, y, exposure, mark_doses, colors=cs, linewidths=0.15)
     axis.set_xlabel(r'$x\,  /\,  nm')
     axis.set_ylabel(r'$y\,  /\,  nm')
     plt.tight_layout(.5)
