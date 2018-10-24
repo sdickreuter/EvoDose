@@ -157,6 +157,10 @@ def get_basic_rectangle(width: float, height: float, n_width: int, n_height: int
 
 
 ####### Simple structure elements
+def get_square(size: float, n: int, centre_dot: bool = False, dose_check_radius: float = 3) -> Structure:
+    return get_rectangle(width=size, height=size, n_height=n, n_width=n, centre_dot=centre_dot,
+                         dose_check_radius=dose_check_radius)
+
 
 def get_rectangle(width: float, height: float, n_width: int, n_height: int, centre_dot: bool = False,
                   dose_check_radius: float = 3) -> Structure:
@@ -184,6 +188,13 @@ def get_rectangle(width: float, height: float, n_width: int, n_height: int, cent
     cx, cy = get_basic_rectangle(width=width, height=height, n_width=n_width, n_height=n_height)
 
     return x, y, cx, cy
+
+
+def get_square_marker_1(size: float = 100, n: int = 7, centre_dot: bool = True,
+                        dose_check_radius: float = 10) -> Structure:
+    sq = get_square(size=size, n=n, centre_dot=centre_dot, dose_check_radius=dose_check_radius)
+    squares = merge([translate(dx=-size / 2, dy=+size / 2, struct=sq), translate(dx=+size / 2, dy=-size / 2, struct=sq), ])
+    return remove_duplicates(squares)
 
 
 def get_line(length: float, width: float, n: int) -> Structure:

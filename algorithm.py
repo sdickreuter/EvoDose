@@ -60,8 +60,7 @@ normalization = 1
 normalization = integrate.quad(lambda x: 2 * np.pi * x * calc_prox(x), 0, np.inf)
 
 
-# uncomment to check normalization
-# print('norm:'+str(normalization))
+# print('norm:'+str(normalization)) # <-- uncomment to check normalization
 
 # ----------- Genetic Algorithm --------------
 
