@@ -1,4 +1,5 @@
 import numpy as np
+import math
 
 """
 structures.py
@@ -37,7 +38,7 @@ def remove_duplicates(struct: Structure) -> Structure:
 
 def remove_basic_duplicates(x, y) -> BasicShape:
     """
-    Removes a point with index i, if x[i] == y[i].
+    Removes a point with index i, if x[i] == y[j] and x[j] == y[j].
     :param x: List of x coordinates
     :param y: List of y coordinates
     :return: Basic shape ([x1,x2,x3,...], [y1,y2,y3,...])
@@ -45,7 +46,10 @@ def remove_basic_duplicates(x, y) -> BasicShape:
     assert len(x) == len(y)
     nx, ny = [], []
     for i, xi in enumerate(x):
-        if xi != y[i]:
+        dupl = False
+        for j in np.arange(i + 1, len(x)):
+            dupl = dupl or (x[i] == x[j] and y[i] == y[j])
+        if not dupl:
             nx.append(xi)
             ny.append(y[i])
     return np.array(nx, dtype=float), np.array(ny, dtype=float)
@@ -80,6 +84,14 @@ def translate(dx: float, dy: float, struct: Structure) -> Structure:
     assert is_valid_structure(struct), 'Provided structure is not valid!'
 
     return struct[0] + dx, struct[1] + dy, struct[2] + dx, struct[3] + dy
+
+
+def merge_basic(x0, y0, x1, y1) -> BasicShape:
+    """
+    Merges several BasicShapes into a single one.
+    :return: Merged BasicShape
+    """
+    return np.hstack([x0, x1]), np.hstack([y0, y1])
 
 
 def merge(structs: Structures) -> Structure:
@@ -157,13 +169,14 @@ def get_basic_rectangle(width: float, height: float, n_width: int, n_height: int
 
 
 ####### Simple structure elements
-def get_square(size: float, n: int, centre_dot: bool = False, dose_check_radius: float = 3) -> Structure:
+def get_square(size: float, n: int, centre_dot: bool = False, dose_check_radius: float = 3,
+               corner_comp=False) -> Structure:
     return get_rectangle(width=size, height=size, n_height=n, n_width=n, centre_dot=centre_dot,
-                         dose_check_radius=dose_check_radius)
+                         dose_check_radius=dose_check_radius, corner_comp=corner_comp)
 
 
 def get_rectangle(width: float, height: float, n_width: int, n_height: int, centre_dot: bool = False,
-                  dose_check_radius: float = 3) -> Structure:
+                  dose_check_radius: float = 3, corner_comp=False) -> Structure:
     """
     Creates a rectangle structure.
     :param width: Width of the resulting rectangle
@@ -179,21 +192,26 @@ def get_rectangle(width: float, height: float, n_width: int, n_height: int, cent
     assert height > dose_check_radius
 
     x, y = get_basic_rectangle(width=width - 2 * dose_check_radius, height=height - 2 * dose_check_radius,
-                               n_width=n_width,
-                               n_height=n_height)
+                               n_width=n_width, n_height=n_height)
+    if corner_comp:
+        if type(corner_comp) is bool:
+            corner_comp = dose_check_radius
+        x1, y1 = get_basic_rectangle(width=width - 2 * corner_comp, height=height - 2 * corner_comp, n_width=2,
+                                     n_height=2)
+        x, y = merge_basic(x, y, x1, y1)
     if centre_dot:
-        x = np.hstack((x, 0))
-        y = np.hstack((y, 0))
+        x, y = merge_basic(x, y, 0, 0)
 
     cx, cy = get_basic_rectangle(width=width, height=height, n_width=n_width, n_height=n_height)
 
     return x, y, cx, cy
 
 
-def get_square_marker_1(size: float = 100, n: int = 7, centre_dot: bool = True,
-                        dose_check_radius: float = 10) -> Structure:
-    sq = get_square(size=size, n=n, centre_dot=centre_dot, dose_check_radius=dose_check_radius)
-    squares = merge([translate(dx=-size / 2, dy=+size / 2, struct=sq), translate(dx=+size / 2, dy=-size / 2, struct=sq), ])
+def get_square_marker_1(size: float = 100, n: int = 5, centre_dot: bool = True,
+                        dose_check_radius: float = 10, corner_comp=False) -> Structure:
+    sq = get_square(size=size, n=n, centre_dot=centre_dot, dose_check_radius=dose_check_radius, corner_comp=corner_comp)
+    squares = merge(
+        [translate(dx=-size / 2, dy=+size / 2, struct=sq), translate(dx=+size / 2, dy=-size / 2, struct=sq), ])
     return remove_duplicates(squares)
 
 
