@@ -1,53 +1,66 @@
 import numpy as np
-from numba import jit,float64,int64,njit, prange
+from numba import jit, float64, int64, njit, prange
 import math
 from scipy import integrate
 import time
 from scipy.stats import linregress
 import parameters
 
-#---------- PSF -------------
+# ---------- PSF -------------
 
 normalization = 1
-#http://iopscience.iop.org/article/10.1143/JJAP.35.1929/pdf
+
+
+# http://iopscience.iop.org/article/10.1143/JJAP.35.1929/pdf
 @njit(float64(float64))
 def calc_prox(r):
-    return (1/normalization) * (1/(math.pi*(1+parameters.eta_1+parameters.eta_2))) * ( (1/(parameters.alpha**2))*math.exp(-r**2/parameters.alpha**2) + (parameters.eta_1/parameters.beta**2)*math.exp(-r**2/parameters.beta**2) + (parameters.eta_2/(24*parameters.gamma**2))*math.exp(-math.sqrt(r/parameters.gamma)) )
+    return (1 / normalization) * (1 / (math.pi * (1 + parameters.eta_1 + parameters.eta_2))) * (
+                (1 / (parameters.alpha ** 2)) * math.exp(-r ** 2 / parameters.alpha ** 2) + (
+                    parameters.eta_1 / parameters.beta ** 2) * math.exp(-r ** 2 / parameters.beta ** 2) + (
+                            parameters.eta_2 / (24 * parameters.gamma ** 2)) * math.exp(
+            -math.sqrt(r / parameters.gamma)))
+
+
 # [return] = C/nm !!!
-normalization = integrate.quad(lambda x: 2*np.pi*x*calc_prox(x), 0, np.inf)
+normalization = integrate.quad(lambda x: 2 * np.pi * x * calc_prox(x), 0, np.inf)
+
+
 # uncomment to check normalization
-#print('norm:'+str(normalization))
+# print('norm:'+str(normalization))
 
-#----------- Genetic Algorithm --------------
+# ----------- Genetic Algorithm --------------
 
-@njit(float64(float64,float64,float64,float64))
-def dist(x0,y0,x,y):
-    return math.sqrt( (x0-x)**2+(y0-y)**2 )
+@njit(float64(float64, float64, float64, float64))
+def dist(x0, y0, x, y):
+    return math.sqrt((x0 - x) ** 2 + (y0 - y) ** 2)
 
-@njit(float64[:](float64[:],float64[:],float64[:],float64[:],float64[:]),parallel=True)
+
+@njit(float64[:](float64[:], float64[:], float64[:], float64[:], float64[:]), parallel=True)
 def calc_map(x0, y0, doses, x, y):
-    exposure = np.zeros(len(x),dtype=np.float64)
+    exposure = np.zeros(len(x), dtype=np.float64)
     pixel_area = np.abs(x[0] - x[1]) * np.abs(x[0] - x[1])  # nm^2
     for i in prange(len(x)):
         for j in range(len(x0)):
-            r= dist(x0[j],y0[j],x[i],y[i])
-            exposure[i] += calc_prox(r)*doses[j]* pixel_area
+            r = dist(x0[j], y0[j], x[i], y[i])
+            exposure[i] += calc_prox(r) * doses[j] * pixel_area
     return exposure
 
-@njit(float64[:](float64[:,:],float64[:]),parallel=True)
+
+@njit(float64[:](float64[:, :], float64[:]), parallel=True)
 def calc_exposure(proximity, doses):
-    exposure = np.zeros(proximity.shape[1],dtype=np.float64)
+    exposure = np.zeros(proximity.shape[1], dtype=np.float64)
     for i in prange(proximity.shape[1]):
         for j in range(proximity.shape[0]):
-            exposure[i] += proximity[j,i]*doses[j]
+            exposure[i] += proximity[j, i] * doses[j]
     return exposure
 
-@njit(float64[:, :](float64[:], float64[:]),parallel=True)
+
+@njit(float64[:, :](float64[:], float64[:]), parallel=True)
 def recombine_arrays(arr1, arr2):
     res = np.zeros((len(arr1), 2), dtype=np.float64)
     res[:, 0] = arr1
     res[:, 1] = arr2
-    #n_crossover = int(len(arr1)/3)
+    # n_crossover = int(len(arr1)/3)
     n_crossover = int(len(arr1) * parameters.crossover_size)
 
     i = 0
@@ -57,6 +70,7 @@ def recombine_arrays(arr1, arr2):
         res[k, 0] = alpha * arr1[k] + (1 - alpha) * arr2[k]
         res[k, 1] = alpha * arr2[k] + (1 - alpha) * arr1[k]
     return res
+
 
 # @jit(float64[:, :](float64[:], float64[:]),nopython=True)#,parallel=True)
 # def recombine_arrays(arr1, arr2):
@@ -81,49 +95,52 @@ def recombine_arrays(arr1, arr2):
 #     return res
 
 
-@njit(float64[:](float64[:],float64, float64),parallel=True)
-def mutate(arr,sigma,mutation_rate):
+@njit(float64[:](float64[:], float64, float64), parallel=True)
+def mutate(arr, sigma, mutation_rate):
     for i in prange(arr.shape[0]):
         if np.random.random() < mutation_rate:
-            mutation = np.random.normal()*sigma
-            if mutation > sigma*1.0:
+            mutation = np.random.normal() * sigma
+            if mutation > sigma * 1.0:
                 mutation = sigma
-            if mutation < -sigma*1.0:
+            if mutation < -sigma * 1.0:
                 mutation = -sigma
             arr[i] = arr[i] + mutation
     return arr
 
 
-@njit(float64[:](float64[:,:],float64[:,:]),parallel=True)
-def calc_fitness(population,proximity):
-    fitness = np.zeros(population.shape[1],dtype=np.float64)
-    pixel_area =  1 #nm^2 #pixel_area * 1e-14  # cm^2
+@njit(float64[:](float64[:, :], float64[:, :]), parallel=True)
+def calc_fitness(population, proximity):
+    fitness = np.zeros(population.shape[1], dtype=np.float64)
+    pixel_area = 1  # nm^2 #pixel_area * 1e-14  # cm^2
 
     for p in range(population.shape[1]):
-        exposure = calc_exposure(proximity[:, :], population[:, p] )
-        exposure = (exposure* 1e6)/(pixel_area*1e-14 ) # uC/cm^2
-        fitness[p] = np.mean(np.abs(np.subtract(parameters.target_dose,exposure)))**2
+        exposure = calc_exposure(proximity[:, :], population[:, p])
+        exposure = (exposure * 1e6) / (pixel_area * 1e-14)  # uC/cm^2
+        fitness[p] = np.mean(np.abs(np.subtract(parameters.target_dose, exposure))) ** 2
 
     if parameters.force_low_gradient:
         for p in range(population.shape[1]):
-            fitness[p] = fitness[p] + np.mean(np.abs(population[:-1,p]-population[1:,p]))*1e14*parameters.gradient_weight
+            fitness[p] = fitness[p] + np.mean(
+                np.abs(population[:-1, p] - population[1:, p])) * 1e14 * parameters.gradient_weight
 
     return fitness
 
-@njit(float64[:,:](float64[:,:]),parallel=True)
-def recombine_population(population):
-    #n_recombination = int(population.shape[1]/3)
-    n_recombination = int(population.shape[1]/2)
-    #n_recombination = int(population.shape[1])
 
-    for i in prange(int(n_recombination/2)):
-        k = 2*i
-        l = 2*i+1
-        r_rec = recombine_arrays(population[:, k],population[:, l])
+@njit(float64[:, :](float64[:, :]), parallel=True)
+def recombine_population(population):
+    # n_recombination = int(population.shape[1]/3)
+    n_recombination = int(population.shape[1] / 2)
+    # n_recombination = int(population.shape[1])
+
+    for i in prange(int(n_recombination / 2)):
+        k = 2 * i
+        l = 2 * i + 1
+        r_rec = recombine_arrays(population[:, k], population[:, l])
         population[:, -k] = r_rec[:, 0]
         population[:, -l] = r_rec[:, 1]
 
     return population
+
 
 # @jit(float64[:,:](float64[:,:]),nopython=True)
 # def recombine_population(population):
@@ -161,22 +178,23 @@ def recombine_population(population):
 #     return new_pop
 
 
-@njit(float64[:,:](float64[:,:], float64),parallel=True)
-def mutate_population(population,sigma):
-    #for i in prange(population.shape[1]):
+@njit(float64[:, :](float64[:, :], float64), parallel=True)
+def mutate_population(population, sigma):
+    # for i in prange(population.shape[1]):
     #    population[:, i] = mutate(population[:, i], sigma, parameters.mutation_rate)
 
     for i in range(population.shape[1]):
-        #if i < int(population.shape[1]/3):
+        # if i < int(population.shape[1]/3):
         if i < 4:
-            population[:, i] = mutate(population[:, i], sigma/10, parameters.mutation_rate)#
+            population[:, i] = mutate(population[:, i], sigma / 10, parameters.mutation_rate)  #
         elif i < 10:
-            population[:, i] = mutate(population[:, i], sigma/2, parameters.mutation_rate)#
+            population[:, i] = mutate(population[:, i], sigma / 2, parameters.mutation_rate)  #
         else:
             population[:, i] = mutate(population[:, i], sigma, parameters.mutation_rate)  #
     return population
 
-@njit(float64[:,:](float64[:,:]),parallel=True)
+
+@njit(float64[:, :](float64[:, :]), parallel=True)
 def check_limits(population):
     for i in prange(population.shape[1]):
         for j in range(population.shape[0]):
@@ -185,17 +203,16 @@ def check_limits(population):
     return population
 
 
-@jit()#(float64(float64[:],float64[:],float64[:],float64[:],float64[:],float64[:]))
-def iterate(x0,y0,cx,cy):
+@jit()  # (float64(float64[:],float64[:],float64[:],float64[:],float64[:],float64[:]))
+def iterate(x0, y0, cx, cy):
+    logpoints = np.arange(500, parameters.max_iter, 500)
+    # logpoints = np.array([max_iter+1])
+    checkpoints = np.arange(50, parameters.max_iter, 50)
 
-    logpoints = np.arange(500,parameters.max_iter,500)
-    #logpoints = np.array([max_iter+1])
-    checkpoints = np.arange(50,parameters.max_iter,50)
+    population = np.zeros((len(x0), parameters.population_size), dtype=np.float64)
+    fitness = np.zeros(parameters.population_size, dtype=np.float64)
 
-    population = np.zeros((len(x0),parameters.population_size),dtype=np.float64)
-    fitness = np.zeros(parameters.population_size,dtype=np.float64)
-
-    proximity = np.zeros((population.shape[0],cx.shape[0]),dtype=np.float64)
+    proximity = np.zeros((population.shape[0], cx.shape[0]), dtype=np.float64)
     convergence = np.zeros(parameters.max_iter)
     t = np.zeros(parameters.max_iter)
 
@@ -203,17 +220,17 @@ def iterate(x0,y0,cx,cy):
     j = 0
     for i in range(population.shape[0]):
         for j in range(cx.shape[0]):
-            proximity[i,j] = calc_prox(dist(x0[i],y0[i],cx[j],cy[j]))
+            proximity[i, j] = calc_prox(dist(x0[i], y0[i], cx[j], cy[j]))
 
-    start = np.linspace(0,parameters.starting_dose*10,num=parameters.population_size)
+    start = np.linspace(0, parameters.starting_dose * 10, num=parameters.population_size)
     for i in range(parameters.population_size):
-        population[:, i] = np.repeat(start[i],len(x0))
+        population[:, i] = np.repeat(start[i], len(x0))
         for j in range(len(x0)):
-            population[j, i] = population[j, i]+(np.random.rand()-0.5)*parameters.starting_dose*0.1
+            population[j, i] = population[j, i] + (np.random.rand() - 0.5) * parameters.starting_dose * 0.1
             if population[j, i] < 0:
                 population[j, i] = 0
 
-    starting_sigma = parameters.starting_dose/2
+    starting_sigma = parameters.starting_dose / 2
 
     sigma = 0
     slope = 0.0
@@ -227,23 +244,22 @@ def iterate(x0,y0,cx,cy):
         fitness = calc_fitness(population, proximity)
         sorted_ind = np.argsort(fitness)
         fitness = fitness[sorted_ind]
-        population = population[:,sorted_ind]
+        population = population[:, sorted_ind]
 
-        if 100*np.sqrt(fitness[0])/parameters.target_dose < parameters.target_fitness:
+        if 100 * np.sqrt(fitness[0]) / parameters.target_dose < parameters.target_fitness:
             break
 
-
         if i < 2000:
-            sigma = starting_sigma#1
+            sigma = starting_sigma  # 1
         elif i < 4000:
-            sigma = starting_sigma/2#0.5
+            sigma = starting_sigma / 2  # 0.5
         else:
             if i in checkpoints:
-                indices = np.arange(i-500,i,step=1)
-                slope, intercept, r_value, p_value, std_err = linregress(t[indices],convergence[indices])
+                indices = np.arange(i - 500, i, step=1)
+                slope, intercept, r_value, p_value, std_err = linregress(t[indices], convergence[indices])
                 variance = np.var(fitness) / fitness[0]
                 if slope > 0 and variance > 0.0001:
-                    if sigma > starting_sigma*0.000001:
+                    if sigma > starting_sigma * 0.000001:
                         sigma *= 0.98
 
                 if slope > 0 and variance < 0.0001:
@@ -251,15 +267,21 @@ def iterate(x0,y0,cx,cy):
                         sigma *= 1.02
 
         population = recombine_population(population)
-        population = mutate_population(population,sigma)
+        population = mutate_population(population, sigma)
 
         population = check_limits(population)
         if i in logpoints:
-            print("{0:7d}: fitness: {1:1.5f}%, sigma_rel: {2:1.5f}, var: {3:1.5f}, slope: {4:1.5f}".format(i, 100*np.sqrt(fitness[0])/parameters.target_dose, sigma/parameters.starting_dose,variance,slope))
+            print("{0:7d}: fitness: {1:1.5f}%, sigma_rel: {2:1.5f}, var: {3:1.5f}, slope: {4:1.5f}".format(i,
+                                                                                                           100 * np.sqrt(
+                                                                                                               fitness[
+                                                                                                                   0]) / parameters.target_dose,
+                                                                                                           sigma / parameters.starting_dose,
+                                                                                                           variance,
+                                                                                                           slope))
 
         convergence[i] = fitness[0]
         t[i] = time.time() - starttime
 
-    print("Done -> Mean Error: {0:1.5f}%, sigma: {1:1.5f}".format(convergence[:i][-1] , sigma))
+    print("Done -> Mean Error: {0:1.5f}%, sigma: {1:1.5f}".format(convergence[:i][-1], sigma))
 
-    return population[:,0], t[:i], convergence[:i]
+    return population[:, 0], t[:i], convergence[:i]
