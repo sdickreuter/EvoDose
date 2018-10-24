@@ -6,21 +6,56 @@ import time
 from scipy.stats import linregress
 import parameters
 
+"""
+In this file the PSF (power spectrum function, the energy distribution of the beam) and the genetic (optimization)
+algorithm are being defined. Uses Numba for performance optimization - Numba decorators are used in this file.
+jit = just in time compilation. More: http://numba.pydata.org/numba-doc/0.35.0/user/jit.html
+"""
+
+
 # ---------- PSF -------------
 
-normalization = 1
+def _gauss(r, sigma):
+    return (1 / (sigma ** 2)) * math.exp(-r ** 2 / sigma ** 2)
 
 
-# http://iopscience.iop.org/article/10.1143/JJAP.35.1929/pdf
 @njit(float64(float64))
-def calc_prox(r):
-    return (1 / normalization) * (1 / (math.pi * (1 + parameters.eta_1 + parameters.eta_2))) * (
-                (1 / (parameters.alpha ** 2)) * math.exp(-r ** 2 / parameters.alpha ** 2) + (
-                    parameters.eta_1 / parameters.beta ** 2) * math.exp(-r ** 2 / parameters.beta ** 2) + (
-                            parameters.eta_2 / (24 * parameters.gamma ** 2)) * math.exp(
-            -math.sqrt(r / parameters.gamma)))
+def tripple_gaussian_improved(r):
+    """
+    According to eq. 5 from http://iopscience.iop.org/article/10.1143/JJAP.35.1929/pdf
+    :param r: Radius from centre
+    :return: Deposited power
+    """
+    n = (1 / normalization) * (1 / (math.pi * (1 + parameters.eta_1 + parameters.eta_2)))
+    return n * (_gauss(r, parameters.alpha) + parameters.eta_1 * _gauss(r, parameters.beta) + parameters.eta_2 / (
+            24 * parameters.gamma ** 2) * math.exp(-math.sqrt(r / parameters.gamma)))
 
 
+@njit(float64(float64))
+def tripple_gaussian_simple(r):
+    """
+    Like eq. 2 from http://iopscience.iop.org/article/10.1143/JJAP.35.1929/pdf
+    :param r: Radius from centre
+    :return: Deposited power
+    """
+    n = (1 / normalization) * (1 / (math.pi * (1 + parameters.eta_1 + parameters.eta_2)))
+    return n * (_gauss(r, parameters.alpha) + parameters.eta_1 * _gauss(r, parameters.beta) + parameters.eta_2 * _gauss(
+        r, parameters.gamma))
+
+
+@njit(float64(float64))
+def double_gaussian_simple(r):
+    """
+    Like eq. 2 from http://iopscience.iop.org/article/10.1143/JJAP.35.1929/pdf
+    :param r: Radius from centre
+    :return: Deposited power
+    """
+    n = (1 / normalization) * (1 / (math.pi * (1 + parameters.eta_1)))
+    return n * (_gauss(r, parameters.alpha) + parameters.eta_1 * _gauss(r, parameters.beta))
+
+
+calc_prox = tripple_gaussian_improved  # Used PSF
+normalization = 1
 # [return] = C/nm !!!
 normalization = integrate.quad(lambda x: 2 * np.pi * x * calc_prox(x), 0, np.inf)
 
@@ -204,9 +239,9 @@ def check_limits(population):
 
 
 @jit()  # (float64(float64[:],float64[:],float64[:],float64[:],float64[:],float64[:]))
-def iterate(x0, y0, cx, cy):
-    logpoints = np.arange(500, parameters.max_iter, 500)
-    # logpoints = np.array([max_iter+1])
+def iterate(x0, y0, cx, cy, verbose: bool = True, report_every: int = 500):
+    # At which points to report on the progress?
+    logpoints = np.arange(report_every, parameters.max_iter, report_every)
     checkpoints = np.arange(50, parameters.max_iter, 50)
 
     population = np.zeros((len(x0), parameters.population_size), dtype=np.float64)
@@ -217,7 +252,6 @@ def iterate(x0, y0, cx, cy):
     t = np.zeros(parameters.max_iter)
 
     i = 0
-    j = 0
     for i in range(population.shape[0]):
         for j in range(cx.shape[0]):
             proximity[i, j] = calc_prox(dist(x0[i], y0[i], cx[j], cy[j]))
@@ -234,7 +268,6 @@ def iterate(x0, y0, cx, cy):
 
     sigma = 0
     slope = 0.0
-    std_err = 0.0
     variance = 0.0
     starttime = time.time()
 
@@ -270,18 +303,19 @@ def iterate(x0, y0, cx, cy):
         population = mutate_population(population, sigma)
 
         population = check_limits(population)
-        if i in logpoints:
-            print("{0:7d}: fitness: {1:1.5f}%, sigma_rel: {2:1.5f}, var: {3:1.5f}, slope: {4:1.5f}".format(i,
-                                                                                                           100 * np.sqrt(
-                                                                                                               fitness[
-                                                                                                                   0]) / parameters.target_dose,
-                                                                                                           sigma / parameters.starting_dose,
-                                                                                                           variance,
-                                                                                                           slope))
+        if i in logpoints and verbose:
+            # Print a short summary of the optimization progress
+            sfitn = 100 * np.sqrt(fitness[0]) / parameters.target_dose
+            ssig = sigma / parameters.starting_dose
+            ps = "{0:7d}: fitness: {1:1.5f}%, sigma_rel: {2:1.5f}, var: {3:1.5f}, slope: {4:1.5f}"
+            print(ps.format(i, sfitn, ssig, variance, slope))
 
         convergence[i] = fitness[0]
         t[i] = time.time() - starttime
 
-    print("Done -> Mean Error: {0:1.5f}%, sigma: {1:1.5f}".format(convergence[:i][-1], sigma))
+    print('Done', end='')
+    if verbose:
+        print(' in %.1fs'%(time.time()-starttime))
+    print(" -> Mean Error: {0:1.5f}%, sigma: {1:1.5f}".format(convergence[:i][-1], sigma))
 
     return population[:, 0], t[:i], convergence[:i]
