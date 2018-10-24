@@ -2,7 +2,7 @@ import numpy as np
 from plotsettings import *
 import matplotlib.pyplot as plt
 from algorithm import calc_map
-import
+import parameters
 from structures import Structure
 
 
