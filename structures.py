@@ -208,10 +208,11 @@ def get_rectangle(width: float, height: float, n_width: int, n_height: int, cent
 
 
 def get_square_marker_1(size: float = 100, n: int = 5, centre_dot: bool = True,
-                        dose_check_radius: float = 10, corner_comp=False) -> Structure:
+                        dose_check_radius: float = 10, corner_comp=False, offset: float = 0) -> Structure:
     sq = get_square(size=size, n=n, centre_dot=centre_dot, dose_check_radius=dose_check_radius, corner_comp=corner_comp)
     squares = merge(
-        [translate(dx=-size / 2, dy=+size / 2, struct=sq), translate(dx=+size / 2, dy=-size / 2, struct=sq), ])
+        [translate(dx=-size / 2 - offset, dy=+size / 2 + offset, struct=sq),
+         translate(dx=+size / 2 + offset, dy=-size / 2 - offset, struct=sq), ([], [], [0], [0])])
     return remove_duplicates(squares)
 
 
