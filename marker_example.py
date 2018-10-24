@@ -10,11 +10,11 @@ import parameters
 import os
 
 # ----- Parameters for Exposure -----
-parameters.current = 100 * 1e-12  # A
-parameters.dwell_time = 800 * 1e-9  # s
-parameters.target_dose = 600  # uC/cm^2
+parameters.current = 34.8 * 1e-12  # A
+parameters.dwell_time = 59 * 10 * 1e-9  # s
+parameters.target_dose = 79.8 * 10  # uC/cm^2
 
-parameters.alpha = 174.630
+parameters.alpha = 175
 parameters.beta = 1141
 parameters.gamma = 3738
 
@@ -23,22 +23,22 @@ parameters.eta_2 = 0.984
 
 # this is reasonable starting point for setting the starting_dose,
 # but if convergence is bad consider tuning this value
-parameters.starting_dose = parameters.target_dose * 1e-16
+parameters.starting_dose = 0.25 * parameters.target_dose * 1e-16
 
 # ----- Parameters for Genetic Algorithm -----
 parameters.population_size = 50
-parameters.max_iter = int(4e5)
+parameters.max_iter = int(10e5)
 # this is a reasonable value for structures with good convergence that is a balance between
 # computation time and accuracy
-parameters.target_fitness = 1e-4
+parameters.target_fitness = 1e-5
 
 algorithm.calc_prox = algorithm.tripple_gaussian_simple
 
-outfilename = 'dimer.txt'
+outfilename = 'marker_1.txt'
 
 # ------------- Make Structures ---------------------
 
-struct = structures.get_square_marker_1(size=200, n=3, corner_comp=10, centre_dot=True, dose_check_radius=35)
+struct = structures.get_square_marker_1(size=200-3, n=5, corner_comp=8, centre_dot=True, dose_check_radius=39, offset=3)
 x0, y0, cx, cy = struct
 
 # Make sure the picture output folder exists
