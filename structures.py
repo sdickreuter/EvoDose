@@ -13,66 +13,96 @@ with size 2. The naming convention here is
 and functions returning such a structure should be named 'get_[structure name]'.
 """
 
-# define type aliases
-from typing import List
+from typing import List, Tuple
 
-Structure = List[List[float], List[float], List[float], List[float]]
-Structures = List[List[List[float], List[float], List[float], List[float]]]
+# define type aliases
+BasicShape = Tuple[np.ndarray, np.ndarray]
+Structure = Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+Structures = List[Structure]
 
 
 ####### Helper functions
 
-def is_valid_structure(arr: Structure):
-    return len(arr) == 4 and len(arr[0]) == len(arr[1]) and len(arr[2]) == len(arr[3])
+def remove_duplicates(struct: Structure) -> Structure:
+    """
+    Removes points, if they overlap (only when both points are within both either exposure or dose-check points).
+    :param struct: Structure with possible duplicate points
+    :return: Cleaned Structure
+    """
+    assert is_valid_structure(struct)
+    x, y = remove_basic_duplicates(struct[0], struct[1])
+    cx, cy = remove_basic_duplicates(struct[2], struct[3])
+    return x, y, cx, cy
+
+
+def remove_basic_duplicates(x, y) -> BasicShape:
+    """
+    Removes a point with index i, if x[i] == y[i].
+    :param x: List of x coordinates
+    :param y: List of y coordinates
+    :return: Basic shape ([x1,x2,x3,...], [y1,y2,y3,...])
+    """
+    assert len(x) == len(y)
+    nx, ny = [], []
+    for i, xi in enumerate(x):
+        if xi != y[i]:
+            nx.append(xi)
+            ny.append(y[i])
+    return np.array(nx, dtype=float), np.array(ny, dtype=float)
+
+
+def is_valid_structure(struct: Structure) -> bool:
+    """
+    Could the provided structure be valid?
+    :param struct: Possibly invalid structure
+    :return: False, if structure invalid; True if possibly valid
+    """
+    return len(struct) == 4 and len(struct[0]) == len(struct[1]) and len(struct[2]) == len(struct[3])
 
 
 def rot(alpha: float):
     """
-    Get a rotation matrix
+    Makes a rotation matrix.
     :param alpha: Rotation angle
     :return: Rotation matrix
     """
     return np.matrix([[np.cos(alpha), -np.sin(alpha)], [np.sin(alpha), np.cos(alpha)]])
 
 
-def translate(dx: float, dy: float, arr: Structure) -> Structure:
+def translate(dx: float, dy: float, struct: Structure) -> Structure:
     """
     Translates a structure.
     :param dx: Movement in x-direction
     :param dy: Movement in y-direction
-    :param arr: Structure array (length=4!)
+    :param struct: Structure array (length=4!)
     :return: Translated structure array
     """
-    assert is_valid_structure(arr)
-    arr = np.array(arr)
-    for a in arr:
-        a[0] += dx
-        a[1] += dy
-        a[2] += dx
-        a[3] += dy
-    return arr
+    assert is_valid_structure(struct), 'Provided structure is not valid!'
+
+    return struct[0] + dx, struct[1] + dy, struct[2] + dx, struct[3] + dy
 
 
-def merge(arrs: Structures) -> Structure:
+def merge(structs: Structures) -> Structure:
     """
     Merges several structures into a single one (keeping exposure and dose-check points seperate).
-    :param arr: List of structure arrays (each length=4!)
-    :return: Merged structure array
+    :param structs: List of structure arrays (each length=4!)
+    :return: Merged Structure
     """
-    arrs = np.array(arrs)
-    return np.hstack(arrs[:, 0]), np.hstack(arrs[:, 1]), np.hstack(arrs[:, 2]), np.hstack(arrs[:, 3])
+    structs = np.array(structs)
+    return np.hstack(structs[:, 0]), np.hstack(structs[:, 1]), np.hstack(structs[:, 2]), np.hstack(structs[:, 3])
 
 
 ####### Basic shapes
 
-def get_basic_circle(r: float, n: int) -> Structure:
+def get_basic_circle(r: float, n: int) -> BasicShape:
     """
     Create a list of points for a basic circle.
     :param r: Radius of the circle
     :param n: Number of point used to approximate the circle
-    :return: Structure ([x1,x2,x3,...], [y1,y2,y3,...])
+    :return: Basic shape ([x1,x2,x3,...], [y1,y2,y3,...])
     """
     v = np.array([r, 0])
+    x, y = [], []
     for i in range(n):
         x2, y2 = (v * rot(2 * np.pi / n * i)).A1
         x = np.hstack((x, x2))
@@ -80,7 +110,18 @@ def get_basic_circle(r: float, n: int) -> Structure:
     return x, y
 
 
-def get_basic_rectangle(width: float, height: float, n_width: int, n_height: int):
+def get_basic_square(size: float, n: int) -> BasicShape:
+    """
+    Create a list of points for a basic square. For more control, use 'get_basic_rectangle'
+    First point is in the left upper corner, going in the clockwise direction.
+    :param size: length of the rectangle (in x- and y-direction)
+    :param n: number of points (in x- and y-direction)
+    :return: Basic shape ([x1,x2,x3,...], [y1,y2,y3,...])
+    """
+    return get_basic_rectangle(width=size, height=size, n_height=n, n_width=n)
+
+
+def get_basic_rectangle(width: float, height: float, n_width: int, n_height: int) -> BasicShape:
     """
     Create a list of points for a basic rectangle.
     First point is in the left upper corner, going in the clockwise direction.
@@ -88,7 +129,7 @@ def get_basic_rectangle(width: float, height: float, n_width: int, n_height: int
     :param height: length of the rectangle in y-direction
     :param n_width: number of points in the x-direction
     :param n_height: number of points in the y-direction
-    :return: [x1,x2,x3,...], [y1,y2,y3,...]
+    :return: Basic shape ([x1,x2,x3,...], [y1,y2,y3,...])
     """
 
     n = 2 * n_width + 2 * n_height - 4  # Corner points are shared
@@ -116,6 +157,33 @@ def get_basic_rectangle(width: float, height: float, n_width: int, n_height: int
 
 
 ####### Simple structure elements
+
+def get_rectangle(width: float, height: float, n_width: int, n_height: int, centre_dot: bool = False,
+                  dose_check_radius: float = 3) -> Structure:
+    """
+    Creates a rectangle structure.
+    :param width: Width of the resulting rectangle
+    :param height: Height of the resulting rectangle
+    :param n_width: Number of exposure (and dose-check) points along the x-direction
+    :param n_height: Number of exposure (and dose-check) points along the y-direction
+    :param centre_dot: Add another exposure point to the middle?
+    :param dose_check_radius: Distance of the exposure to dose-check points
+    :return: Structure
+    """
+    assert dose_check_radius > 0
+    assert width > dose_check_radius
+    assert height > dose_check_radius
+
+    x, y = get_basic_rectangle(width=width - 2 * dose_check_radius, height=height - 2 * dose_check_radius,
+                               n_width=n_width,
+                               n_height=n_height)
+    if centre_dot:
+        x = np.hstack((x, 0))
+        y = np.hstack((y, 0))
+
+    cx, cy = get_basic_rectangle(width=width, height=height, n_width=n_width, n_height=n_height)
+
+    return x, y, cx, cy
 
 
 def get_line(length: float, width: float, n: int) -> Structure:
