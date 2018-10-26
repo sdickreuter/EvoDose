@@ -68,6 +68,14 @@ normalization = integrate.quad(lambda x: 2 * np.pi * x * calc_prox(x), 0, np.inf
 
 @njit(float64(float64, float64, float64, float64))
 def dist(x0, y0, x, y):
+    """
+    Calculates the distance between two points
+    :param x0: x coordinate of point 1
+    :param y0: y coordinate of point 1
+    :param x: x coordinate of point 2
+    :param y: y coordinate of point 2
+    :return: distance
+    """
     return math.sqrt((x0 - x) ** 2 + (y0 - y) ** 2)
 
 
@@ -84,6 +92,12 @@ def calc_map(x0, y0, doses, x, y):
 
 @njit(float64[:](float64[:, :], float64[:]), parallel=True)
 def calc_exposure(proximity, doses):
+    """
+    Calculates the effective dose in each point.
+    :param proximity: 2D array containing the mutual distances between all exposure and check points
+    :param doses: A list of the current doses
+    :return: A list of the calculated doses in all the check points
+    """
     exposure = np.zeros(proximity.shape[1], dtype=np.float64)
     for i in prange(proximity.shape[1]):
         for j in range(proximity.shape[0]):
@@ -144,13 +158,15 @@ def mutate(arr, sigma, mutation_rate):
     return arr
 
 
-@njit(float64[:](float64[:, :], float64[:, :]), parallel=True)
-def calc_fitness(population, proximity):
+@njit(float64[:](float64[:, :], float64[:, :], float64[:]), parallel=True)
+def calc_fitness(population, proximity, fixed_dose_exposure):
     fitness = np.zeros(population.shape[1], dtype=np.float64)
     pixel_area = 1  # nm^2 #pixel_area * 1e-14  # cm^2
 
     for p in range(population.shape[1]):
         exposure = calc_exposure(proximity[:, :], population[:, p])
+        if len(fixed_dose_exposure) == len(exposure):
+            exposure += fixed_dose_exposure
         exposure = (exposure * 1e6) / (pixel_area * 1e-14)  # uC/cm^2
         fitness[p] = np.mean(np.abs(np.subtract(parameters.target_dose, exposure))) ** 2
 
@@ -240,23 +256,56 @@ def check_limits(population):
 
 
 @jit()  # (float64(float64[:],float64[:],float64[:],float64[:],float64[:],float64[:]))
-def iterate(x0, y0, cx, cy, verbose: bool = True, report_every: int = 500):
+def iterate(x0, y0, cx, cy, fixed_dose_points=None, verbose: bool = True, report_every: int = 500):
+    """
+    This is the main function. Calling this will start the algorithm and iterate until the convergence criterions are met.
+    :param x0: x coordinates of the exposure points
+    :param y0: y coordinates of the exposure points
+    :param cx: x coordinates of the dose-check points
+    :param cy: y coordinates of the dose-check points
+    :param fixed_dose_points: Definition of points with a fixed dose (are not optimized). The format is a list
+                              containing three same-length lists:
+                                - x coordinates of the fixed exposure points
+                                - y coordinates of the fixed exposure points
+                                - doses of the fixed exposure points
+    :param verbose: Should we be verbose in the output prints?
+    :param report_every: How often shall we give an intermediate report?
+    :return: best found doses, required time for each iteration, fitness of each iteration
+    """
+
+    if verbose:
+        print('Preparing optimization ...')
+
     # At which points to report on the progress?
     logpoints = np.arange(report_every, parameters.max_iter, report_every)
     checkpoints = np.arange(50, parameters.max_iter, 50)
 
-    population = np.zeros((len(x0), parameters.population_size), dtype=np.float64)
-    fitness = np.zeros(parameters.population_size, dtype=np.float64)
-
-    proximity = np.zeros((population.shape[0], cx.shape[0]), dtype=np.float64)
+    # List containing the convergence data for each iteration
     convergence = np.zeros(parameters.max_iter)
+
+    # List containing the required time for each iteration
     t = np.zeros(parameters.max_iter)
 
-    i = 0
-    for i in range(population.shape[0]):
-        for j in range(cx.shape[0]):
+    # Create a 2D Matrix of the distances between the exposure and dose-check points
+    proximity = np.zeros((len(x0), cx.shape[0]), dtype=np.float64)
+    for i in range(proximity.shape[0]):
+        for j in range(proximity.shape[1]):
             proximity[i, j] = calc_prox(dist(x0[i], y0[i], cx[j], cy[j]))
 
+    # Do a similar calculation for potential points with a fixed (non-optimized) dose
+    if fixed_dose_points:
+        fd_proximity = np.zeros((fixed_dose_points.shape[1], cx.shape[0]))
+        for i in range(fixed_dose_points.shape[1]):
+            for j in range(cx.shape[0]):
+                fd_proximity[i, j] = calc_prox(
+                    dist(fixed_dose_points[0, i], fixed_dose_points[1, i], cx[j], cy[j]))
+        fixed_dose_exposure = calc_exposure(proximity=fd_proximity, doses=fixed_dose_points[2])
+    else:
+        fixed_dose_exposure = np.zeros((1,)) # required to fulfil Numba argument type specification
+
+    # population is a 2D array containing the doses for each member of the population
+    population = np.zeros((len(x0), parameters.population_size), dtype=np.float64)
+    # Assign starting doses to each point for each member of the population, with some randomness
     start = np.linspace(0, parameters.starting_dose * 10, num=parameters.population_size)
     for i in range(parameters.population_size):
         population[:, i] = np.repeat(start[i], len(x0))
@@ -270,16 +319,17 @@ def iterate(x0, y0, cx, cy, verbose: bool = True, report_every: int = 500):
     sigma = 0
     slope = 0.0
     variance = 0.0
-    starttime = time.time()
+    start_time = time.time()
 
     print('Starting optimization ...')
 
     for i in range(parameters.max_iter):
-        fitness = calc_fitness(population, proximity)
+        fitness = calc_fitness(population, proximity, fixed_dose_exposure)
         sorted_ind = np.argsort(fitness)
         fitness = fitness[sorted_ind]
         population = population[:, sorted_ind]
 
+        # If target fitness is already reached, exit the loop
         if 100 * np.sqrt(fitness[0]) / parameters.target_dose < parameters.target_fitness:
             break
 
@@ -312,11 +362,11 @@ def iterate(x0, y0, cx, cy, verbose: bool = True, report_every: int = 500):
             print(ps.format(i, sfitn, ssig, variance, slope))
 
         convergence[i] = fitness[0]
-        t[i] = time.time() - starttime
+        t[i] = time.time() - start_time
 
     print('Done', end='')
     if verbose:
-        print(' in %.1fs' % (time.time() - starttime))
+        print(' in %.1fs' % (time.time() - start_time))
     print(" -> Mean Error: {0:1.5f}%, sigma: {1:1.5f}".format(convergence[:i][-1], sigma))
 
     return population[:, 0], t[:i], convergence[:i]
