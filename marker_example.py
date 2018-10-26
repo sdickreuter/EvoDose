@@ -12,7 +12,7 @@ import os
 # ----- Parameters for Exposure -----
 parameters.current = 34.8 * 1e-12  # A
 parameters.dwell_time = 59 * 10 * 1e-9  # s
-parameters.target_dose = 79.8 * 10  # uC/cm^2
+parameters.target_dose = 79.8 * 14  # uC/cm^2
 
 parameters.alpha = 175
 parameters.beta = 1141
@@ -27,7 +27,7 @@ parameters.starting_dose = 0.25 * parameters.target_dose * 1e-16
 
 # ----- Parameters for Genetic Algorithm -----
 parameters.population_size = 50
-parameters.max_iter = int(10e5)
+parameters.max_iter = int(1e5)
 # this is a reasonable value for structures with good convergence that is a balance between
 # computation time and accuracy
 parameters.target_fitness = 1e-5
@@ -38,7 +38,8 @@ outfilename = 'marker_1.txt'
 
 # ------------- Make Structures ---------------------
 
-struct = structures.get_square_marker_1(size=200-3, n=5, corner_comp=8, centre_dot=True, dose_check_radius=39, offset=3)
+offs = 0.5
+struct = structures.get_square_marker_1(size=200-offs, n=5, corner_comp=9.8, centre_dot=True, dose_check_radius=39.5, offset=offs)
 x0, y0, cx, cy = struct
 
 # Make sure the picture output folder exists
