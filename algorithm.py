@@ -81,6 +81,15 @@ def dist(x0, y0, x, y):
 
 @njit(float64[:](float64[:], float64[:], float64[:], float64[:], float64[:]), parallel=True)
 def calc_map(x0, y0, doses, x, y):
+    """
+    Calculates the dose of several exposure points at serveral arbitrary points.
+    Can be used to make a map of the dose distribution.
+    :param x0: x coordinate of exposure points
+    :param y0: y coordinate of exposure points
+    :param x: x coordinate of points where dose is calculated
+    :param y: y coordinate of points where dose is calculated
+    :return: calculated doses points at x and y
+    """
     exposure = np.zeros(len(x), dtype=np.float64)
     pixel_area = np.abs(x[0] - x[1]) * np.abs(x[0] - x[1])  # nm^2
     for i in prange(len(x)):
@@ -107,6 +116,12 @@ def calc_exposure(proximity, doses):
 
 @njit(float64[:, :](float64[:], float64[:]), parallel=True)
 def recombine_arrays(arr1, arr2):
+    """
+    Recombines two arrays (mother and father) to two new arrays (children), models bisexual reproduction
+    :param arr1: mother array
+    :param arr2: father array
+    :return: two children
+    """
     res = np.zeros((len(arr1), 2), dtype=np.float64)
     res[:, 0] = arr1
     res[:, 1] = arr2
@@ -121,6 +136,7 @@ def recombine_arrays(arr1, arr2):
         res[k, 1] = alpha * arr2[k] + (1 - alpha) * arr1[k]
     return res
 
+# Alternative recombination methods
 
 # @jit(float64[:, :](float64[:], float64[:]),nopython=True)#,parallel=True)
 # def recombine_arrays(arr1, arr2):
@@ -147,6 +163,12 @@ def recombine_arrays(arr1, arr2):
 
 @njit(float64[:](float64[:], float64, float64), parallel=True)
 def mutate(arr, sigma, mutation_rate):
+    """
+    Introduces random varations (mutations) to the elements of an array.
+    :param arr: array to mutate
+    :param sigma: strength/scale of mutations
+    :return: mutated array
+    """
     for i in prange(arr.shape[0]):
         if np.random.random() < mutation_rate:
             mutation = np.random.normal() * sigma
@@ -160,6 +182,12 @@ def mutate(arr, sigma, mutation_rate):
 
 @njit(float64[:](float64[:, :], float64[:, :], float64[:]), parallel=True)
 def calc_fitness(population, proximity, fixed_dose_exposure):
+    """
+    Calculates the fitness for every individual of the population
+    :param proximity: Matrix with pre-computed proximity values
+    :param fixed_dose_exposure: Array with the doses from the fixed dose points
+    :return: Array with fitness values
+    """
     fitness = np.zeros(population.shape[1], dtype=np.float64)
     pixel_area = 1  # nm^2 #pixel_area * 1e-14  # cm^2
 
@@ -180,6 +208,11 @@ def calc_fitness(population, proximity, fixed_dose_exposure):
 
 @njit(float64[:, :](float64[:, :]), parallel=True)
 def recombine_population(population):
+    """
+    Recombines the individuals of a population
+    :param population: Population matrix
+    :return: new recombined population
+    """
     # n_recombination = int(population.shape[1]/3)
     n_recombination = int(population.shape[1] / 2)
     # n_recombination = int(population.shape[1])
@@ -193,6 +226,7 @@ def recombine_population(population):
 
     return population
 
+# Alternative function for recombining the population
 
 # @jit(float64[:,:](float64[:,:]),nopython=True)
 # def recombine_population(population):
@@ -232,6 +266,12 @@ def recombine_population(population):
 
 @njit(float64[:, :](float64[:, :], float64), parallel=True)
 def mutate_population(population, sigma):
+    """
+    Mutate all individuals of a population
+    :param population: Population matrix
+    :param sigma: strength/scale of mutations
+    :return: new recombined population
+    """
     # for i in prange(population.shape[1]):
     #    population[:, i] = mutate(population[:, i], sigma, parameters.mutation_rate)
 
@@ -248,6 +288,11 @@ def mutate_population(population, sigma):
 
 @njit(float64[:, :](float64[:, :]), parallel=True)
 def check_limits(population):
+    """
+    Check if all individuals of the are bigger than 0, meaning that no negativ exposure is allowed
+    :param population: Population matrix
+    :return: corrected population
+    """
     for i in prange(population.shape[1]):
         for j in range(population.shape[0]):
             if population[j, i] < 0:
