@@ -161,8 +161,8 @@ def recombine_arrays(arr1, arr2):
 #     return res
 
 
-@njit(float64[:](float64[:], float64, float64), parallel=True)
-def mutate(arr, sigma, mutation_rate):
+@njit(float64[:](float64[:], float64), parallel=True)
+def mutate(arr, sigma):
     """
     Introduces random varations (mutations) to the elements of an array.
     :param arr: array to mutate
@@ -170,7 +170,7 @@ def mutate(arr, sigma, mutation_rate):
     :return: mutated array
     """
     for i in prange(arr.shape[0]):
-        if np.random.random() < mutation_rate:
+        if np.random.random() < parameters.mutation_rate:
             mutation = np.random.normal() * sigma
             if mutation > sigma * 1.0:
                 mutation = sigma
@@ -273,16 +273,16 @@ def mutate_population(population, sigma):
     :return: new recombined population
     """
     # for i in prange(population.shape[1]):
-    #    population[:, i] = mutate(population[:, i], sigma, parameters.mutation_rate)
+    #    population[:, i] = mutate(population[:, i], sigma)
 
     for i in range(population.shape[1]):
         # if i < int(population.shape[1]/3):
         if i < 4:
-            population[:, i] = mutate(population[:, i], sigma / 10, parameters.mutation_rate)  #
+            population[:, i] = mutate(population[:, i], sigma / 10)  #
         elif i < 10:
-            population[:, i] = mutate(population[:, i], sigma / 2, parameters.mutation_rate)  #
+            population[:, i] = mutate(population[:, i], sigma / 2)  #
         else:
-            population[:, i] = mutate(population[:, i], sigma, parameters.mutation_rate)  #
+            population[:, i] = mutate(population[:, i], sigma)  #
     return population
 
 
