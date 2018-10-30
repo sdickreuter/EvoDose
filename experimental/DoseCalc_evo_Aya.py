@@ -1,11 +1,9 @@
-import numpy as np
-
-from plotsettings import *
+from EvoDose.plotsettings import *
 
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from numba import jit,float64,int64,njit, prange
+from numba import jit,float64
 
 import math
 

@@ -1,10 +1,10 @@
 import numpy as np
-from numba import jit, float64, int64, njit, prange
+from numba import jit, float64, njit, prange
 import math
 from scipy import integrate
 import time
 from scipy.stats import linregress
-import parameters
+from EvoDose import parameters
 
 """
 In this file the PSF (power spectrum function, the energy distribution of the beam) and the genetic (optimization)

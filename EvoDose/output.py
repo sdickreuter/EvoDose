@@ -1,4 +1,4 @@
-import parameters
+from EvoDose import parameters
 import numpy as np
 
 

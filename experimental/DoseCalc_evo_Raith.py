@@ -1,10 +1,8 @@
-import numpy as np
-
-from plotsettings import *
+from EvoDose.plotsettings import *
 
 import matplotlib.pyplot as plt
 
-from numba import jit,float64,int64
+from numba import jit,float64
 
 import math
 

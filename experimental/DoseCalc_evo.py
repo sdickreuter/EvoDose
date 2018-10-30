@@ -1,6 +1,4 @@
-import numpy as np
-
-from plotsettings import *
+from EvoDose.plotsettings import *
 
 import matplotlib.pyplot as plt
 import seaborn as sns

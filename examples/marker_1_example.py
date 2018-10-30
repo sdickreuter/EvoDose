@@ -1,12 +1,6 @@
-import numpy as np
-from plotsettings import *
-import matplotlib.pyplot as plt
-
-import structures
-import algorithm
-from output import output_xenos, output_raith
-from plot_functions import *
-import parameters
+from EvoDose import algorithm, structures
+from EvoDose.output import output_xenos, output_raith
+from EvoDose.plot_functions import *
 import os
 
 # ----- Parameters for Exposure -----

@@ -1,12 +1,9 @@
-import numpy as np
-from plotsettings import *
-import matplotlib.pyplot as plt
-
-from structures import get_dimer
-from algorithm import iterate
-from output import output_xenos, output_raith
-from plot_functions import *
-import parameters
+from EvoDose.structures import get_dimer
+from EvoDose.algorithm import iterate
+from EvoDose.output import output_xenos, output_raith
+from EvoDose.plot_functions import *
+from EvoDose import parameters
+import os
 
 #----- Parameters for Exposure -----
 parameters.current = 100 * 1e-12 # A
@@ -15,7 +12,7 @@ parameters.target_dose = 600 # uC/cm^2
 
 # this is reasonable starting point for setting the starting_dose,
 # but if convergence is bad consider tuning this value
-parameters.starting_dose = parameters.target_dose*1e-16
+parameters.starting_dose = parameters.target_dose * 1e-16
 
 #----- Parameters for Genetic Algorithm -----
 parameters.population_size = 50
@@ -25,6 +22,13 @@ parameters.max_iter = 1000000
 parameters.target_fitness = 0.1
 
 outfilename = 'dimer.txt'
+
+
+# Make sure the picture output folder exists
+folder = 'pics'
+if not os.path.isdir(folder):
+    os.mkdir(folder)
+
 
 #------------- Make Structures ---------------------
 

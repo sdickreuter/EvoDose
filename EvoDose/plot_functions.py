@@ -1,9 +1,8 @@
-import numpy as np
-from plotsettings import *
+from EvoDose.plotsettings import *
 import matplotlib.pyplot as plt
-from algorithm import calc_map
-import parameters
-from structures import Structure
+from EvoDose.algorithm import calc_map
+from EvoDose import parameters
+from EvoDose.structures import Structure
 
 
 def calc_dose_map(x0, y0, doses, stepsize=1):

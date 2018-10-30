@@ -1,12 +1,6 @@
-import numpy as np
-from plotsettings import *
-import matplotlib.pyplot as plt
-
-import structures
-import algorithm
-from output import output_xenos, output_raith
-from plot_functions import *
-import parameters
+from EvoDose import algorithm, structures
+from EvoDose.output import output_xenos, output_raith
+from EvoDose.plot_functions import *
 import os
 
 # ----- Parameters for Exposure -----
@@ -39,7 +33,7 @@ outfilename = 'marker_1.txt'
 # ------------- Make Structures ---------------------
 
 offs = 0.5
-struct = structures.get_square_marker_1(size=200-offs, n=5, corner_comp=9.8, centre_dot=True, dose_check_radius=39.5, offset=offs)
+struct = structures.get_square_marker_1(size=200 - offs, n=5, corner_comp=9.8, centre_dot=True, dose_check_radius=39.5, offset=offs)
 x0, y0, cx, cy = struct
 
 # Make sure the picture output folder exists
